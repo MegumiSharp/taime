@@ -1,0 +1,18 @@
+# Signing secrets: never commit
+*.jks
+*.keystore
+app/android/key.properties
+
+# Build outputs and binaries
+*.apk
+*.aab
+app/build/
+app/android/build/
+app/android/.gradle/
+app/android/.kotlin/
+app/android/local.properties
+app/.dart_tool/
+
+# IDE
+*.iml
+.idea/

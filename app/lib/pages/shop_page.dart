@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../app.dart';
 import '../db.dart';
@@ -165,7 +166,7 @@ class _ShopPageState extends State<ShopPage> {
                         const SizedBox(height: 16),
                         PillSelector<String>(
                           values: const ['evidenza', 'tutti', 'miei'],
-                          labels: const ['In evidenza', 'Tutti', 'I miei gattini'],
+                          labels: const ['In evidenza', 'Tutti', 'Album'],
                           selected: _tab,
                           onChanged: (v) => setState(() => _tab = v),
                         ),
@@ -173,7 +174,7 @@ class _ShopPageState extends State<ShopPage> {
                       ],
                     ),
                   ),
-                  ..._content(context, owned, balance),
+                  ..._content(context, owned, balance, snap.data ?? const <Purchase>[]),
                   const SliverToBoxAdapter(child: SizedBox(height: 110)),
                 ],
               ),
@@ -184,7 +185,7 @@ class _ShopPageState extends State<ShopPage> {
     );
   }
 
-  List<Widget> _content(BuildContext context, Set<String> owned, int balance) {
+  List<Widget> _content(BuildContext context, Set<String> owned, int balance, List<Purchase> purchases) {
     switch (_tab) {
       case 'evidenza':
         final featured = [
@@ -245,12 +246,18 @@ class _ShopPageState extends State<ShopPage> {
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             sliver: SliverToBoxAdapter(
               child: Text(
-                '${mine.length} di ${kSkins.length} gattini. Tocca per sceglierne uno.',
+                '${mine.length} di ${kSkins.length} gattini adottati.',
                 style: TextStyle(color: context.tc.muted),
               ),
             ),
           ),
-          _grid(context, mine, owned, balance),
+          SliverToBoxAdapter(
+            child: _Album(
+              skins: mine,
+              active: widget.settings.activeSkin,
+              purchases: purchases,
+            ),
+          ),
         ];
     }
   }
@@ -614,4 +621,111 @@ class _ConfettiPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ConfettiPainter old) => old.t != t;
+}
+
+
+/// The adopted kittens, with what you did together.
+class _Album extends StatelessWidget {
+  const _Album({required this.skins, required this.active, required this.purchases});
+  final List<Skin> skins;
+  final String active;
+  final List<Purchase> purchases;
+
+  @override
+  Widget build(BuildContext context) {
+    final tc = context.tc;
+    final adopted = {for (final p in purchases) p.skinId: p.purchasedAt};
+    return StreamBuilder<List<SessionWork>>(
+      stream: db.watchSessionWork(DateTime(2000), DateTime(2200)),
+      builder: (context, snap) {
+        final seconds = <String, int>{};
+        final sessions = <String, int>{};
+        final cats = <String, int>{};
+        for (final w in snap.data ?? const <SessionWork>[]) {
+          final id = w.session.skinId ?? kSkins.first.id;
+          seconds[id] = (seconds[id] ?? 0) + w.workSeconds;
+          sessions[id] = (sessions[id] ?? 0) + 1;
+          cats[id] = (cats[id] ?? 0) + catsForSession(w.workSeconds ~/ 60, id, w.session.id).length;
+        }
+        final sorted = [...skins]..sort((a, b) => (seconds[b.id] ?? 0).compareTo(seconds[a.id] ?? 0));
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            children: [
+              for (var i = 0; i < sorted.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: StaggeredIn(
+                    index: i,
+                    child: SoftCard(
+                      color: sorted[i].id == active ? tc.accentSoft : null,
+                      padding: const EdgeInsets.fromLTRB(8, 10, 16, 10),
+                      onTap: () => showSkinPreview(context, sorted[i], owned: true, balance: 0),
+                      child: Row(
+                        children: [
+                          KittenView(skin: sorted[i], size: 92, animate: sorted[i].id == active),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(sorted[i].name,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context).textTheme.titleMedium),
+                                    ),
+                                    if (sorted[i].id == active) ...[
+                                      const SizedBox(width: 6),
+                                      Icon(Icons.favorite_rounded, size: 15, color: tc.accent),
+                                    ],
+                                  ],
+                                ),
+                                Text(
+                                  adopted[sorted[i].id] == null
+                                      ? "Con te dall'inizio"
+                                      : 'Adottato il ${DateFormat('d MMMM y', 'it').format(adopted[sorted[i].id]!)}',
+                                  style: TextStyle(color: tc.muted, fontSize: 12.5),
+                                ),
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 14,
+                                  runSpacing: 4,
+                                  children: [
+                                    _AlbumStat(icon: Icons.schedule_rounded, text: fmtHm(Duration(seconds: seconds[sorted[i].id] ?? 0))),
+                                    _AlbumStat(icon: Icons.spa_rounded, text: '${sessions[sorted[i].id] ?? 0} sessioni'),
+                                    _AlbumStat(icon: Icons.pets_rounded, text: '${cats[sorted[i].id] ?? 0} nel recinto'),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AlbumStat extends StatelessWidget {
+  const _AlbumStat({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 14, color: context.tc.accent),
+      const SizedBox(width: 4),
+      Text(text, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+    ],
+  );
 }

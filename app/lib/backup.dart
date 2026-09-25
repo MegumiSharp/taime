@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:taime_native/taime_native.dart';
 
 import 'app.dart';
 import 'db.dart';
@@ -235,4 +236,21 @@ Future<String> importJson() async {
   if (data['app'] != 'taime') return 'Non è un backup di Taime';
   final n = await restoreAll(db, data);
   return 'Importate $n sessioni';
+}
+
+/// Once a week, a JSON backup into Download/Taime (the last 4 are kept).
+/// Runs when the app opens or comes back; returns true if it wrote one.
+Future<bool> maybeAutoBackup({bool force = false}) async {
+  try {
+    final prefs = await db.allPrefs();
+    if (!force && prefs['autoBackup'] == '0') return false;
+    final last = DateTime.tryParse(prefs['lastAutoBackup'] ?? '');
+    if (!force && last != null && DateTime.now().difference(last) < const Duration(days: 7)) return false;
+    final json = const JsonEncoder.withIndent('  ').convert(await dumpAll(db));
+    await TaimeNative.saveBackup('taime-auto-${_stamp()}.json', utf8.encode(json));
+    await db.setPref('lastAutoBackup', DateTime.now().toIso8601String());
+    return true;
+  } catch (_) {
+    return false;
+  }
 }

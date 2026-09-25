@@ -15,7 +15,6 @@ class PenTile {
     required this.minutes,
     required this.cats,
     required this.seed,
-    this.label,
     this.payload,
     this.today = false,
   });
@@ -24,7 +23,6 @@ class PenTile {
   final double minutes;
   final List<PenCat> cats;
   final int seed;
-  final String? label;
   final Object? payload;
   final bool today;
 }
@@ -243,23 +241,6 @@ class _PenPainter extends CustomPainter {
       }
     } else {
       _fence(canvas, front: true);
-      for (final t in tiles) {
-        if (t.label == null) continue;
-        final p = geo.pointOn(t.col, t.row, 0.08, 0.5);
-        final tp = TextPainter(
-          text: TextSpan(
-            text: t.label,
-            style: TextStyle(
-              fontFamily: 'Nunito',
-              fontSize: math.max(9, geo.tw * 0.14),
-              fontWeight: t.today ? FontWeight.w900 : FontWeight.w700,
-              color: t.today ? todayColor : labelColor.withValues(alpha: 0.55),
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tp.paint(canvas, p - Offset(tp.width / 2, tp.height * 0.2));
-      }
     }
   }
 

@@ -7,10 +7,12 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:taime_native/taime_native.dart';
 
 import 'app.dart';
+import 'backup.dart';
 import 'db.dart';
 import 'kitten/art.dart';
 import 'notif.dart';
 import 'pages/focus_page.dart';
+import 'pages/onboarding.dart';
 import 'pages/overview_page.dart';
 import 'pages/shop_page.dart';
 import 'settings.dart';
@@ -56,6 +58,8 @@ void onForegroundNotification(NotificationResponse response) {
   tracker.handleAction(response.actionId);
 }
 
+final navigatorKey = GlobalKey<NavigatorState>();
+
 /// Which tab the shell shows; other screens can jump (e.g. "Vedi nel recinto").
 final shellTab = ValueNotifier<int>(0);
 
@@ -74,6 +78,7 @@ Future<void> main() async {
   await tracker.materialize();
   await tracker.sync();
   resyncTodoReminders();
+  maybeAutoBackup();
   runApp(const TaimeApp());
 }
 
@@ -90,14 +95,35 @@ class _TaimeAppState extends State<TaimeApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => Future.delayed(const Duration(milliseconds: 600), _maybeOnboard));
     _listener = AppLifecycleListener(
+      onHide: () async {
+        final session = await db.openSession();
+        final seg = await db.openSegment();
+        if (session == null || seg == null || seg.isPause) return;
+        final act = await db.activityById(session.activityId);
+        await scheduleAwayReminder(
+          at: DateTime.now().add(const Duration(minutes: 15)),
+          activity: act?.name ?? 'Il focus',
+        );
+      },
       onResume: () async {
+        await cancelAwayReminder();
+        maybeAutoBackup();
         // Another isolate (notification buttons) may have changed the file.
         db.refreshAll();
         await tracker.materialize();
         await tracker.sync();
       },
     );
+  }
+
+  Future<void> _maybeOnboard() async {
+    if (await db.pref('onboarded') != null) return;
+    final ctx = navigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    await db.setPref('onboarded', '1');
+    if (ctx.mounted) await showOnboarding(ctx);
   }
 
   @override
@@ -114,6 +140,7 @@ class _TaimeAppState extends State<TaimeApp> {
         final s = Settings(snap.data ?? const {});
         return MaterialApp(
           title: 'Taime',
+          navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           locale: const Locale('it'),
           supportedLocales: const [Locale('it'), Locale('en')],
@@ -196,73 +223,76 @@ class _NavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tc = context.tc;
+    final n = Shell._items.length;
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+        padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
         child: Container(
-          height: 66,
-          padding: const EdgeInsets.all(6),
+          height: 62,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            color: tc.surface.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.circular(34),
+            color: tc.surface.withValues(alpha: 0.97),
+            borderRadius: BorderRadius.circular(31),
             boxShadow: [
               BoxShadow(
-                color: tc.text.withValues(alpha: tc.dark ? 0.3 : 0.09),
+                color: tc.text.withValues(alpha: tc.dark ? 0.3 : 0.08),
                 blurRadius: 24,
                 offset: const Offset(0, 8),
               ),
             ],
           ),
-          child: Row(
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              for (var i = 0; i < Shell._items.length; i++)
-                Expanded(
-                  flex: i == index ? 14 : 10,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => onChanged(i),
-                    child: AnimatedContainer(
-                      duration: Motion.of(context, Motion.medium),
-                      curve: Motion.emphasized,
+              // A soft blob that slides under the selected icon.
+              AnimatedAlign(
+                duration: Motion.of(context, Motion.slow),
+                curve: Motion.emphasized,
+                alignment: Alignment(-1 + 2 * index / (n - 1), 0),
+                child: FractionallySizedBox(
+                  widthFactor: 1 / n,
+                  child: Center(
+                    child: Container(
+                      width: 50,
+                      height: 44,
                       decoration: BoxDecoration(
-                        color: i == index ? tc.accentSoft : Colors.transparent,
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            i == index ? Shell._items[i].$1 : Shell._items[i].$2,
-                            size: 23,
-                            color: i == index ? tc.text : tc.muted,
-                          ),
-                          AnimatedSize(
-                            duration: Motion.of(context, Motion.medium),
-                            curve: Motion.emphasized,
-                            child: i == index
-                                ? Padding(
-                                    padding: const EdgeInsets.only(left: 6),
-                                    child: Text(
-                                      Shell._items[i].$3,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.fade,
-                                      softWrap: false,
-                                      style: TextStyle(
-                                        fontFamily: 'Nunito',
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 13,
-                                        color: tc.text,
-                                      ),
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
-                        ],
+                        color: tc.accentSoft,
+                        borderRadius: BorderRadius.circular(22),
                       ),
                     ),
                   ),
                 ),
+              ),
+              Row(
+                children: [
+                  for (var i = 0; i < n; i++)
+                    Expanded(
+                      child: Semantics(
+                        label: Shell._items[i].$3,
+                        selected: i == index,
+                        button: true,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => onChanged(i),
+                          child: SizedBox(
+                            height: 62,
+                            child: AnimatedScale(
+                              scale: i == index ? 1.08 : 1,
+                              duration: Motion.of(context, Motion.medium),
+                              curve: Motion.spring,
+                              child: Icon(
+                                i == index ? Shell._items[i].$1 : Shell._items[i].$2,
+                                size: 25,
+                                color: i == index ? tc.text : tc.muted,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
         ),

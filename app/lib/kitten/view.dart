@@ -16,6 +16,7 @@ class KittenView extends StatefulWidget {
     this.growth = 1,
     this.size = 160,
     this.animate = true,
+    this.actions = true,
   });
 
   final Skin skin;
@@ -25,6 +26,9 @@ class KittenView extends StatefulWidget {
   final double growth;
   final double size;
   final bool animate;
+
+  /// Random little scenes (fly, bottle, yawn...) now and then.
+  final bool actions;
 
   @override
   State<KittenView> createState() => _KittenViewState();
@@ -40,11 +44,14 @@ class _KittenViewState extends State<KittenView>
   double _nextEar = 4, _earAt = -10;
   double _nextLook = 3, _lookTarget = 0;
   double _bumpAt = -10;
+  double _nextAction = 12, _actionAt = -100;
+  KittenAction _action = KittenAction.none;
   double _now = 0;
 
   @override
   void initState() {
     super.initState();
+    _nextAction = 8 + _rnd.nextDouble() * 14;
     _anim.t = _rnd.nextDouble() * 10; // desync kittens shown together
   }
 
@@ -103,6 +110,24 @@ class _KittenViewState extends State<KittenView>
       _nextLook = t + 3 + _rnd.nextDouble() * 4;
     }
     _anim.look += (_lookTarget - _anim.look) * 0.06;
+
+    // Every 25-70 s, maybe a little scene; never while sleeping.
+    if (widget.actions && !sleeping && _action == KittenAction.none && t >= _nextAction) {
+      final options = KittenAction.values.where((a) => a != KittenAction.none).toList();
+      _action = options[_rnd.nextInt(options.length)];
+      _actionAt = t;
+    }
+    if (_action != KittenAction.none) {
+      final p = (t - _actionAt) / kActionSeconds[_action]!;
+      if (p >= 1) {
+        _action = KittenAction.none;
+        _nextAction = t + 25 + _rnd.nextDouble() * 45;
+      }
+      _anim.action = _action;
+      _anim.actionT = p.clamp(0.0, 1.0);
+    } else {
+      _anim.action = KittenAction.none;
+    }
 
     final up = (t - _bumpAt) / 0.5;
     _anim.bump = up >= 0 && up < 1 ? up : 0;

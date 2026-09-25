@@ -182,3 +182,48 @@ Future<void> scheduleTodoReminder({
 
 Future<void> cancelTodoReminder(int todoId) =>
     plugin.cancel(id: kTodoIdBase + todoId);
+
+// --- "Still there?" -----------------------------------------------------------
+
+const int kAwayId = 3;
+
+const _awayDetails = AndroidNotificationDetails(
+  'away',
+  'Timer dimenticato',
+  channelDescription: 'Avvisa se l\'app resta in background con un timer attivo',
+  importance: Importance.high,
+  priority: Priority.high,
+  category: AndroidNotificationCategory.reminder,
+);
+
+/// With the app in the background and a timer running, nudge after a while.
+/// Uses the phone's default notification sound.
+Future<void> scheduleAwayReminder({required DateTime at, required String activity}) async {
+  try {
+    await initTz();
+    await plugin.zonedSchedule(
+      id: kAwayId,
+      scheduledDate: tz.TZDateTime.from(at, tz.local),
+      title: 'Il timer è ancora attivo',
+      body: '$activity sta ancora contando. Stai ancora lavorando?',
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          _awayDetails.channelId,
+          _awayDetails.channelName,
+          channelDescription: _awayDetails.channelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          category: AndroidNotificationCategory.reminder,
+          actions: [action('pause', 'Pausa'), action('stop', 'Termina')],
+        ),
+      ),
+    );
+  } catch (_) {}
+}
+
+Future<void> cancelAwayReminder() async {
+  try {
+    await plugin.cancel(id: kAwayId);
+  } catch (_) {}
+}

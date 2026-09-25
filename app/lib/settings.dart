@@ -40,6 +40,12 @@ class Settings {
   /// 1 = Monday, 7 = Sunday.
   int get weekStart => _int('weekStart', 1);
 
+  /// Minutes of focus to aim for each day. 0 = off.
+  int get dailyGoalMin => _int('dailyGoalMin', 120);
+
+  bool get autoBackup => _bool('autoBackup', true);
+  String get lastAutoBackup => _m['lastAutoBackup'] ?? '';
+
   int get lastActivityId => _int('lastActivityId', 0);
 
   String get activeSkin => _m['activeSkin'] ?? 'biscotto';

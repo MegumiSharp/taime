@@ -1,8 +1,16 @@
-# Taime — Specifiche 2.0
+# Taime — Specifiche 2.1
 
 App Android personale per concentrarsi e tracciare il tempo, nello spirito di Forest: mentre lavori un gattino cresce, il tempo diventa crocchette per comprare nuovi gattini, i giorni riempiono un recinto. Nessun account, nessun server: dati in SQLite sul telefono, con backup.
 
 La richiesta completa della 2.0 è in `Aggiornamento Taime/PROMPT Taime 2.0.md`.
+
+## Novità 2.1
+- Barra in basso solo icone; recinto sempre quadrato (settimana 3×3, mese 6×6, anno 4×4) senza scritte.
+- 52 gattini (20 nuovi: mago, strega, angioletto, fantasmino, drago, astronauta...), effetti (fluttuare, magia, bolle, neve, cuori, stelle cadenti, coriandoli, fuochi fatui); ogni leggendario ha un effetto.
+- Azioni casuali dei gattini ogni 25–70 s: mosca, bottiglia, sbadiglio, farfalla, gomitolo, starnuto.
+- Notifica ridisegnata (non più stile musicale), si aggiorna da sola ogni 30 s e torna dopo il riavvio.
+- Avviso se l'app resta in background 15 minuti con un timer attivo (suono di notifica predefinito).
+- Obiettivo giornaliero con giorni di fila, Album dei gattini, widget Home, backup automatico settimanale in Download/Taime, pausa lunga del Pomodoro, spiegazione alla prima apertura.
 
 ## Stack
 - Flutter 3.47, Android. Database **drift** (schema v2, migrazione dalla 1.0 testata).

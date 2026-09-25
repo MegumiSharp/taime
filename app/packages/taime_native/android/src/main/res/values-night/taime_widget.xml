@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="taime_widget_bg_top">#FF2C3530</color>
+    <color name="taime_widget_bg_bottom">#FF222925</color>
+    <color name="taime_widget_text">#FFEDF2EE</color>
+    <color name="taime_widget_muted">#FFAFBCB2</color>
+    <color name="taime_widget_accent">#FF8FC09D</color>
+    <color name="taime_widget_soft">#FF3A4740</color>
+</resources>

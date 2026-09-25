@@ -248,83 +248,42 @@ class _PenCard extends StatelessWidget {
               ],
             );
           case Period.settimana:
-            final names = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
-            pen = PenView(
-              cols: 7,
-              rows: 1,
-              maxCatsPerTile: 3,
-              catScale: 0.56,
-              onTap: (t) => _openDay(context, t.payload as DateTime),
-              tiles: [
-                for (var i = 0; i < 7; i++)
-                  () {
-                    final d = DateTime(from.year, from.month, from.day + i);
-                    return PenTile(
-                      col: i,
-                      row: 0,
-                      minutes: mins(d),
-                      cats: cats(d),
-                      seed: d.millisecondsSinceEpoch ~/ 86400000,
-                      label: names[d.weekday - 1],
-                      payload: d,
-                      today: d == todayKey,
-                    );
-                  }(),
-              ],
+            pen = _square(
+              cells: [for (var i = 0; i < 7; i++) DateTime(from.year, from.month, from.day + i)],
+              side: 3,
+              minutes: mins,
+              cats: cats,
+              todayKey: todayKey,
+              catScale: 0.5,
+              maxCats: 3,
+              onTap: (d) => _openDay(context, d),
             );
           case Period.mese:
-            final lead = (from.weekday - weekStart + 7) % 7;
             final days = DateTime(from.year, from.month + 1, 0).day;
-            final rows = ((lead + days) / 7).ceil();
-            pen = PenView(
-              cols: 7,
-              rows: rows,
-              maxCatsPerTile: 2,
+            pen = _square(
+              cells: [for (var i = 0; i < days; i++) DateTime(from.year, from.month, i + 1)],
+              side: 6,
+              minutes: mins,
+              cats: cats,
+              todayKey: todayKey,
               catScale: 0.5,
-              onTap: (t) => _openDay(context, t.payload as DateTime),
-              tiles: [
-                for (var i = 0; i < days; i++)
-                  () {
-                    final d = DateTime(from.year, from.month, i + 1);
-                    final cell = lead + i;
-                    return PenTile(
-                      col: cell % 7,
-                      row: cell ~/ 7,
-                      minutes: mins(d),
-                      cats: cats(d),
-                      seed: d.millisecondsSinceEpoch ~/ 86400000,
-                      label: '${i + 1}',
-                      payload: d,
-                      today: d == todayKey,
-                    );
-                  }(),
-              ],
+              maxCats: 2,
+              onTap: (d) => _openDay(context, d),
             );
           case Period.anno:
-            final names = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
             final byMonth = <int, List<SessionWork>>{};
             for (final s in sessions) {
               byMonth.putIfAbsent(s.session.startedAt.month, () => []).add(s);
             }
-            pen = PenView(
-              cols: 4,
-              rows: 3,
-              maxCatsPerTile: 3,
-              catScale: 0.42,
-              onTap: (t) => onOpenMonth(t.payload as DateTime),
-              tiles: [
-                for (var m = 1; m <= 12; m++)
-                  PenTile(
-                    col: (m - 1) % 4,
-                    row: (m - 1) ~/ 4,
-                    minutes: (byMonth[m] ?? const []).fold(0.0, (a, s) => a + s.workSeconds / 60),
-                    cats: catsOf(byMonth[m] ?? const []),
-                    seed: from.year * 12 + m,
-                    label: names[m - 1],
-                    payload: DateTime(from.year, m),
-                    today: from.year == today.year && m == today.month,
-                  ),
-              ],
+            pen = _square(
+              cells: [for (var m = 1; m <= 12; m++) DateTime(from.year, m)],
+              side: 4,
+              minutes: (d) => (byMonth[d.month] ?? const []).fold(0.0, (a, s) => a + s.workSeconds / 60),
+              cats: (d) => catsOf(byMonth[d.month] ?? const []),
+              todayKey: DateTime(today.year, today.month),
+              catScale: 0.45,
+              maxCats: 3,
+              onTap: onOpenMonth,
             );
         }
 
@@ -363,6 +322,43 @@ class _PenCard extends StatelessWidget {
       },
     );
   }
+}
+
+/// A square fenced field: [cells] fill it row by row, the rest is plain grass.
+PenView _square({
+  required List<DateTime> cells,
+  required int side,
+  required double Function(DateTime) minutes,
+  required List<PenCat> Function(DateTime) cats,
+  required DateTime todayKey,
+  required double catScale,
+  required int maxCats,
+  required ValueChanged<DateTime> onTap,
+}) {
+  return PenView(
+    cols: side,
+    rows: side,
+    maxCatsPerTile: maxCats,
+    catScale: catScale,
+    onTap: (t) {
+      if (t.payload is DateTime) onTap(t.payload as DateTime);
+    },
+    tiles: [
+      for (var i = 0; i < side * side; i++)
+        if (i < cells.length)
+          PenTile(
+            col: i % side,
+            row: i ~/ side,
+            minutes: minutes(cells[i]),
+            cats: cats(cells[i]),
+            seed: cells[i].millisecondsSinceEpoch ~/ 86400000,
+            payload: cells[i],
+            today: cells[i] == todayKey,
+          )
+        else
+          PenTile(col: i % side, row: i ~/ side, minutes: 0, cats: const [], seed: i),
+    ],
+  );
 }
 
 void _openDay(BuildContext context, DateTime day) {

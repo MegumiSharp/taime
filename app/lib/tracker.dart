@@ -211,6 +211,12 @@ class Tracker {
     return total;
   }
 
+  /// Pomodoro pause length: every [Settings.pomoEvery]-th one is the long one.
+  static int pomoBreakMinutes(Settings s, List<Segment> segs) {
+    final done = segs.where((x) => !x.isPause && x.endedAt != null).length;
+    return done > 0 && done % s.pomoEvery == 0 ? s.pomoLongBreakMin : s.pomoBreakMin;
+  }
+
   static Duration paused(List<Segment> segs, {DateTime? now}) {
     final n = now ?? DateTime.now();
     var total = Duration.zero;
@@ -231,12 +237,14 @@ class Tracker {
 
   Future<void> _sync() async {
     final seg = await db.openSegment();
+    final s = await _settings();
+    if (seg == null || seg.isPause) await cancelAwayReminder();
     if (seg == null) {
       await TaimeNative.liveStop();
       await cancelReminder();
+      await _widgetIdle(s);
       return;
     }
-    final s = await _settings();
     final session = await db.openSession();
     final act = session == null ? null : await db.activityById(session.activityId);
     final name = act?.name ?? 'Attività';
@@ -245,29 +253,41 @@ class Tracker {
     final now = DateTime.now();
     final work = worked(segs, now: now);
     final skinId = session?.skinId ?? s.activeSkin;
-    final hourMs = const Duration(hours: 1).inMilliseconds;
-    final inHourMs = work.inMilliseconds % hourMs;
-    final adults = work.inMinutes ~/ 60;
-    final stage = stageOf(inHourMs / 60000);
+    final art = [for (var i = 0; i <= 4; i++) await kittenArtPath(skinId, i), await kittenArtPath(skinId, 0, sleeping: true)];
+    final stage = stageOf((work.inSeconds / 60) % 60);
+    final pauseMins = s.pomodoro ? pomoBreakMinutes(s, segs) : s.pauseReminderMin;
+
+    await TaimeNative.liveUpdate(
+      title: name,
+      paused: seg.isPause,
+      pomodoro: s.pomodoro,
+      color: color,
+      workedMs: work.inMilliseconds,
+      stampMs: now.millisecondsSinceEpoch,
+      pauseStartMs: seg.startedAt.millisecondsSinceEpoch,
+      segmentStartMs: seg.startedAt.millisecondsSinceEpoch,
+      pomoMs: (seg.isPause ? pauseMins : s.pomoWorkMin) * 60000,
+      deadlineMs: seg.deadlineAt?.millisecondsSinceEpoch ?? 0,
+      art: art,
+      stageNames: kStageNames,
+      stageMinutes: kStageMinutes,
+    );
+    await TaimeNative.widgetUpdate(
+      running: true,
+      paused: seg.isPause,
+      title: seg.isPause ? 'In pausa · $name' : name,
+      subtitle: seg.isPause ? 'Lavoro ${fmtHm(work)}' : kStageNames[stage],
+      sinceMs: seg.isPause ? seg.startedAt.millisecondsSinceEpoch : now.subtract(work).millisecondsSinceEpoch,
+      artPath: seg.isPause ? art.last : art[stage],
+    ).catchError((_) {});
 
     if (seg.isPause) {
-      final mins = s.pomodoro ? s.pomoBreakMin : s.pauseReminderMin;
-      await TaimeNative.liveUpdate(
-        title: 'In pausa · $name',
-        subtitle: 'Dalle ${_hm(seg.startedAt)} · lavoro ${fmtHm(work)}',
-        paused: true,
-        color: oklch(0.72, 0.12, kPauseHue),
-        positionMs: s.pomodoro ? now.difference(seg.startedAt).inMilliseconds : inHourMs,
-        durationMs: s.pomodoro ? s.pomoBreakMin * 60000 : hourMs,
-        sinceMs: seg.startedAt.millisecondsSinceEpoch,
-        artPath: await kittenArtPath(skinId, stage, sleeping: true),
-      );
-      if (mins > 0) {
+      if (pauseMins > 0) {
         await scheduleReminder(
           settings: s,
-          at: seg.startedAt.add(Duration(minutes: mins)),
+          at: seg.startedAt.add(Duration(minutes: pauseMins)),
           title: 'Torna al lavoro',
-          body: 'La pausa di $mins minuti è finita',
+          body: 'La pausa di $pauseMins minuti è finita',
           actions: [action('resume', 'Riprendi')],
         );
       } else {
@@ -276,27 +296,13 @@ class Tracker {
       return;
     }
 
-    final cats = adults == 0 ? '' : ' · $adults ${adults == 1 ? 'gatto' : 'gatti'}';
-    await TaimeNative.liveUpdate(
-      title: name,
-      subtitle: s.pomodoro
-          ? 'Pomodoro · ${kStageNames[stage]}$cats'
-          : '${kStageNames[stage]}$cats',
-      paused: false,
-      color: color,
-      positionMs: s.pomodoro ? now.difference(seg.startedAt).inMilliseconds : inHourMs,
-      durationMs: s.pomodoro ? s.pomoWorkMin * 60000 : hourMs,
-      sinceMs: now.subtract(work).millisecondsSinceEpoch,
-      artPath: await kittenArtPath(skinId, stage),
-    );
-
     final due = seg.deadlineAt;
     if (s.pomodoro && due != null) {
       await scheduleReminder(
         settings: s,
         at: due,
         title: 'Pomodoro finito',
-        body: 'Pausa di ${s.pomoBreakMin} minuti',
+        body: 'Pausa di ${pomoBreakMinutes(s, [...segs.where((x) => x.id != seg.id), seg.copyWith(endedAt: Value(due))])} minuti',
         actions: [action('stop', 'Termina')],
       );
     } else if (s.breakMode == 'auto' && due != null) {
@@ -323,8 +329,30 @@ class Tracker {
     }
   }
 
-  static String _hm(DateTime d) =>
-      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  /// Widget at rest: the chosen kitten and the activity you would start.
+  Future<void> _widgetIdle(Settings s) async {
+    try {
+      final acts = await db.watchActivities().first;
+      final act = acts.where((a) => a.id == s.lastActivityId).firstOrNull ?? acts.firstOrNull;
+      await TaimeNative.widgetUpdate(
+        running: false,
+        paused: false,
+        title: act?.name ?? 'Taime',
+        subtitle: 'Pronto per il focus',
+        sinceMs: 0,
+        artPath: await kittenArtPath(s.activeSkin, 4),
+      );
+    } catch (_) {}
+  }
+
+  /// "Inizia" from the widget: the last activity, with the chosen kitten.
+  Future<void> startLast() async {
+    final s = await _settings();
+    final acts = await db.watchActivities().first;
+    if (acts.isEmpty) return;
+    final act = acts.where((a) => a.id == s.lastActivityId).firstOrNull ?? acts.first;
+    await start(act.id);
+  }
 
   Future<void> handleAction(String? actionId) async {
     switch (actionId) {
@@ -334,6 +362,8 @@ class Tracker {
         await resume();
       case 'stop':
         await stop();
+      case 'start':
+        if (await db.openSession() == null) await startLast();
       case 'declinePause':
         await declineAutoPause();
       case 'keepPause':

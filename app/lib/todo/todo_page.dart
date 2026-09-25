@@ -360,12 +360,7 @@ class _TodoTileState extends State<_TodoTile> {
     await Future<void>.delayed(Motion.of(context, const Duration(milliseconds: 420)));
     final undo = await completeTodo(t);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(t.recurrence != null ? 'Fatto! Il prossimo è già in lista' : 'Fatto!'),
-        action: SnackBarAction(label: 'Annulla', onPressed: undo),
-      ),
-    );
+    showUndo(ScaffoldMessenger.of(context), t.recurrence != null ? 'Fatto! Il prossimo è già in lista' : 'Fatto!', undo);
   }
 
   Future<bool> _swipeLeft() async {
@@ -422,7 +417,7 @@ class _TodoTileState extends State<_TodoTile> {
       msg = 'Eliminato';
     }
     if (undo != null) {
-      messenger.showSnackBar(SnackBar(content: Text(msg!), action: SnackBarAction(label: 'Annulla', onPressed: undo)));
+      showUndo(messenger, msg!, undo);
     }
     return false;
   }
@@ -1099,9 +1094,7 @@ class _TodoDetailState extends State<_TodoDetail> {
                       final messenger = ScaffoldMessenger.of(context);
                       final undo = await deleteTodo(t);
                       nav.pop();
-                      messenger.showSnackBar(
-                        SnackBar(content: const Text('Eliminato'), action: SnackBarAction(label: 'Annulla', onPressed: undo)),
-                      );
+                      showUndo(messenger, 'Eliminato', undo);
                     },
                   ),
                 ],

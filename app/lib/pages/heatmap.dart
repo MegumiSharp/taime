@@ -30,6 +30,101 @@ Map<DateTime, double> minutesPerDay(
   return out;
 }
 
+/// Days in a row (ending today, or yesterday if today is not done yet) that
+/// reached [goalMinutes].
+int goalStreak(Map<DateTime, double> perDay, double goalMinutes, DateTime now) {
+  if (goalMinutes <= 0) return 0;
+  var d = DateTime(now.year, now.month, now.day);
+  if ((perDay[d] ?? 0) < goalMinutes) d = DateTime(d.year, d.month, d.day - 1);
+  var n = 0;
+  while ((perDay[d] ?? 0) >= goalMinutes) {
+    n++;
+    d = DateTime(d.year, d.month, d.day - 1);
+  }
+  return n;
+}
+
+/// Today's progress toward the daily goal, and the streak.
+class GoalCard extends StatelessWidget {
+  const GoalCard({super.key, required this.goalMinutes, this.now});
+  final int goalMinutes;
+  final DateTime? now;
+
+  @override
+  Widget build(BuildContext context) {
+    final tc = context.tc;
+    final n = now ?? DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    final from = DateTime(today.year, today.month, today.day - 400);
+    final to = DateTime(today.year, today.month, today.day + 1);
+    return StreamBuilder<List<Segment>>(
+      stream: db.watchSegmentsBetween(from, to),
+      builder: (context, snap) {
+        final perDay = minutesPerDay(snap.data ?? const [], from, to, now: n);
+        final done = perDay[today] ?? 0;
+        final k = (done / goalMinutes).clamp(0.0, 1.0);
+        final streak = goalStreak(perDay, goalMinutes.toDouble(), n);
+        final reached = done >= goalMinutes;
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: tc.surface.withValues(alpha: tc.dark ? 0.6 : 0.75),
+            borderRadius: BorderRadius.circular(kRadius),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(reached ? Icons.emoji_events_rounded : Icons.flag_rounded, size: 18, color: tc.accent),
+                  const SizedBox(width: 6),
+                  Text(reached ? 'Obiettivo raggiunto!' : 'Obiettivo di oggi',
+                      style: Theme.of(context).textTheme.titleSmall),
+                  const Spacer(),
+                  if (streak > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: tc.pauseSoft, borderRadius: BorderRadius.circular(14)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.local_fire_department_rounded, size: 15, color: tc.pause),
+                          const SizedBox(width: 3),
+                          Text(streak == 1 ? '1 giorno' : '$streak giorni di fila',
+                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: tc.text)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: k),
+                  duration: Motion.of(context, Motion.slower),
+                  curve: Motion.curve,
+                  builder: (context, v, _) => LinearProgressIndicator(
+                    value: v,
+                    minHeight: 12,
+                    color: tc.accent,
+                    backgroundColor: tc.raised,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${fmtHm(Duration(minutes: done.round()))} di ${fmtHm(Duration(minutes: goalMinutes))}',
+                style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// GitHub-style grid of the last [weeks] weeks, greener where you worked more.
 class ActivityHeatmap extends StatelessWidget {
   const ActivityHeatmap({super.key, this.weeks = 20});

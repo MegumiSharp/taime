@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:time_tracker/db.dart';
 import 'package:time_tracker/kitten/skins.dart';
+import 'package:time_tracker/pages/heatmap.dart';
+import 'package:time_tracker/tracker.dart';
 import 'package:time_tracker/palette.dart';
 import 'package:time_tracker/settings.dart';
 import 'package:time_tracker/theme.dart';
@@ -55,6 +58,38 @@ void main() {
         expect(contrastRatio(tc.muted.toARGB32(), tc.surface.toARGB32()), greaterThanOrEqualTo(3.5), reason: reason);
         expect(contrastRatio(tc.accent.toARGB32(), tc.surface.toARGB32()), greaterThanOrEqualTo(3), reason: reason);
       }
+    }
+  });
+
+  test('goal streak counts days in a row, today optional', () {
+    final now = DateTime(2026, 9, 23, 15);
+    DateTime d(int day) => DateTime(2026, 9, day);
+    final perDay = {d(23): 30.0, d(22): 130.0, d(21): 125.0, d(20): 60.0, d(19): 200.0};
+    expect(goalStreak(perDay, 120, now), 2); // today not reached yet: 22, 21
+    expect(goalStreak({...perDay, d(23): 121}, 120, now), 3);
+    expect(goalStreak(perDay, 0, now), 0);
+    expect(goalStreak({}, 120, now), 0);
+  });
+
+  test('pomodoro: every 4th pause is the long one', () {
+    const s = Settings({'pomoEvery': '4', 'pomoBreakMin': '5', 'pomoLongBreakMin': '15'});
+    Segment work(int i) => Segment(
+      id: i,
+      sessionId: 1,
+      isPause: false,
+      startedAt: DateTime(2026, 1, 1, 9, i * 30),
+      endedAt: DateTime(2026, 1, 1, 9, i * 30 + 25),
+    );
+    expect(Tracker.pomoBreakMinutes(s, [work(0)]), 5);
+    expect(Tracker.pomoBreakMinutes(s, [work(0), work(1), work(2)]), 5);
+    expect(Tracker.pomoBreakMinutes(s, [work(0), work(1), work(2), work(3)]), 15);
+    expect(Tracker.pomoBreakMinutes(s, [for (var i = 0; i < 5; i++) work(i)]), 5);
+  });
+
+  test('52 skins, every legendary has a visible effect', () {
+    expect(kSkins.length, 52);
+    for (final s in kSkins.where((s) => s.rarity == Rarity.leggendario)) {
+      expect(s.effect != Effect.nessuno || s.effect2 != Effect.nessuno, isTrue, reason: s.id);
     }
   });
 }

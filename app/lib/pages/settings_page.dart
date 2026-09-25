@@ -16,7 +16,7 @@ import '../theme.dart';
 import '../ui/motion.dart';
 import '../ui/widgets.dart';
 import 'activity_picker.dart';
-import 'gallery_page.dart';
+import 'onboarding.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -50,6 +50,23 @@ class SettingsPage extends StatelessWidget {
                     title: 'Generale',
                     children: [
                       _Choice(
+                        label: 'Obiettivo giornaliero',
+                        value: s.dailyGoalMin,
+                        options: const {
+                          0: 'Nessuno',
+                          60: '1 ora',
+                          90: '1h 30m',
+                          120: '2 ore',
+                          180: '3 ore',
+                          240: '4 ore',
+                          300: '5 ore',
+                          360: '6 ore',
+                          480: '8 ore',
+                        },
+                        onChanged: (v) => db.setPref('dailyGoalMin', '$v'),
+                      ),
+                      const SizedBox(height: 10),
+                      _Choice(
                         label: 'La settimana inizia',
                         value: s.weekStart,
                         options: const {1: 'Lunedì', 7: 'Domenica'},
@@ -57,18 +74,17 @@ class SettingsPage extends StatelessWidget {
                       ),
                     ],
                   ),
+                  _Section(title: 'Backup', children: [_Backup(s: s)]),
                   _Section(
-                    title: 'Gattini',
+                    title: 'Aiuto',
                     children: [
                       _Row(
-                        icon: Icons.pets_rounded,
-                        title: 'Galleria',
-                        subtitle: 'Tutti i gattini, in ogni posa e fase di crescita',
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GalleryPage())),
+                        icon: Icons.lightbulb_rounded,
+                        title: 'Come funziona Taime',
+                        onTap: () => showOnboarding(context),
                       ),
                     ],
                   ),
-                  _Section(title: 'Backup', children: [const _Backup()]),
                   const SizedBox(height: 8),
                   Center(
                     child: Text(
@@ -191,9 +207,13 @@ class _AppearanceState extends State<_Appearance> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             for (final (id, label, color) in themes)
-              Expanded(
+              Semantics(
+                label: label,
+                selected: s.theme == id,
+                button: true,
                 child: TapScale(
                   onTap: () {
                     Haptic.select();
@@ -201,34 +221,42 @@ class _AppearanceState extends State<_Appearance> {
                   },
                   child: AnimatedContainer(
                     duration: Motion.of(context, Motion.medium),
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    curve: Motion.spring,
+                    width: 58,
+                    height: 58,
+                    padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
-                      color: s.theme == id ? tc.accentSoft : tc.raised,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: s.theme == id ? tc.accent : Colors.transparent, width: 1.5),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: s.theme == id ? tc.text : Colors.transparent, width: 2.5),
                     ),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                          child: s.theme == id ? const Icon(Icons.check_rounded, size: 16, color: Colors.white) : null,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color.lerp(color, Colors.white, 0.45)!, color],
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          label,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
-                          maxLines: 2,
-                        ),
-                      ],
+                      ),
+                      child: id == 'custom'
+                          ? const Icon(Icons.palette_rounded, color: Colors.white, size: 20)
+                          : null,
                     ),
                   ),
                 ),
               ),
           ],
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: AnimatedSwitcher(
+            duration: Motion.of(context, Motion.medium),
+            child: Text(
+              themes.firstWhere((t) => t.$1 == s.theme, orElse: () => themes.first).$2,
+              key: ValueKey(s.theme),
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
         ),
         const SizedBox(height: 14),
         PillSelector<String>(
@@ -539,6 +567,20 @@ class _Pomodoro extends StatelessWidget {
             options: const {3: '3 min', 5: '5 min', 10: '10 min', 15: '15 min'},
             onChanged: (v) => _set('pomoBreakMin', '$v'),
           ),
+          const SizedBox(height: 10),
+          _Choice(
+            label: 'Pausa lunga',
+            value: s.pomoLongBreakMin,
+            options: const {10: '10 min', 15: '15 min', 20: '20 min', 30: '30 min'},
+            onChanged: (v) => _set('pomoLongBreakMin', '$v'),
+          ),
+          const SizedBox(height: 10),
+          _Choice(
+            label: 'Pausa lunga ogni',
+            value: s.pomoEvery,
+            options: const {2: '2 pomodori', 3: '3 pomodori', 4: '4 pomodori', 5: '5 pomodori', 6: '6 pomodori'},
+            onChanged: (v) => _set('pomoEvery', '$v'),
+          ),
         ],
       ],
     );
@@ -548,16 +590,40 @@ class _Pomodoro extends StatelessWidget {
 // --- Backup -----------------------------------------------------------------------
 
 class _Backup extends StatelessWidget {
-  const _Backup();
+  const _Backup({required this.s});
+  final Settings s;
 
   @override
   Widget build(BuildContext context) {
+    final tc = context.tc;
+    final prefsLast = DateTime.tryParse(s.lastAutoBackup);
     return Column(
       children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Backup automatico settimanale'),
+          subtitle: Text(
+            prefsLast == null
+                ? 'In Download/Taime, tiene gli ultimi 4'
+                : 'Ultimo: ${prefsLast.day}/${prefsLast.month}/${prefsLast.year} · in Download/Taime',
+          ),
+          value: s.autoBackup,
+          onChanged: (v) => db.setPref('autoBackup', v ? '1' : '0'),
+        ),
+        _Row(
+          icon: Icons.backup_rounded,
+          title: 'Fai un backup adesso',
+          subtitle: 'Nella stessa cartella Download/Taime',
+          onTap: () async {
+            final messenger = ScaffoldMessenger.of(context);
+            final ok = await maybeAutoBackup(force: true);
+            messenger.showSnackBar(SnackBar(content: Text(ok ? 'Backup salvato in Download/Taime' : 'Backup non riuscito')));
+          },
+        ),
         _Row(
           icon: Icons.ios_share_rounded,
           title: 'Esporta backup (JSON)',
-          subtitle: 'Tutto: sessioni, gattini, to-do. Reimportabile.',
+          subtitle: 'Condividi su Drive, Telegram, email…',
           onTap: exportJson,
         ),
         _Row(
@@ -585,6 +651,8 @@ class _Backup extends StatelessWidget {
             messenger.showSnackBar(SnackBar(content: Text(msg)));
           },
         ),
+        Text('I dati restano solo sul telefono: tieni una copia anche fuori.',
+            style: TextStyle(color: tc.muted, fontSize: 12.5)),
       ],
     );
   }

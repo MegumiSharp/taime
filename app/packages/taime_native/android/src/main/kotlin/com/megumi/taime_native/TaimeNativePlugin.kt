@@ -86,6 +86,15 @@ class TaimeNativePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                     result.success(null)
                 }
                 "sdk" -> result.success(Build.VERSION.SDK_INT)
+                "backup.save" -> {
+                    saveBackup(call.argument<String>("name")!!, call.argument<ByteArray>("bytes")!!)
+                    result.success(null)
+                }
+                "widget.update" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    TaimeWidget.save(context, call.arguments as Map<String, Any?>)
+                    result.success(null)
+                }
                 "sound.pickSystem" -> pickSystemSound(call.argument<String>("current"), result)
                 "sound.shareableUri" -> result.success(shareableUri(call.arguments as String))
                 "sound.preview" -> {
@@ -183,6 +192,60 @@ class TaimeNativePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
             it.release()
         }
         player = null
+    }
+
+    // --- Backup -------------------------------------------------------------
+
+    /** Download/Taime/<name>; automatic backups beyond the newest 4 are removed. */
+    private fun saveBackup(name: String, bytes: ByteArray) {
+        if (Build.VERSION.SDK_INT >= 29) {
+            val resolver = context.contentResolver
+            val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val folder = android.os.Environment.DIRECTORY_DOWNLOADS + "/Taime/"
+            val cols = arrayOf(
+                android.provider.MediaStore.MediaColumns._ID,
+                android.provider.MediaStore.MediaColumns.DISPLAY_NAME
+            )
+            // Same name today: replace it.
+            resolver.query(
+                collection, cols,
+                "${android.provider.MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${android.provider.MediaStore.MediaColumns.DISPLAY_NAME}=?",
+                arrayOf(folder, name), null
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    resolver.delete(android.content.ContentUris.withAppendedId(collection, c.getLong(0)), null, null)
+                }
+            }
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, folder)
+            }
+            val uri = resolver.insert(collection, values) ?: throw IllegalStateException("MediaStore insert failed")
+            resolver.openOutputStream(uri)?.use { it.write(bytes) }
+            // Keep the newest 4 automatic backups.
+            resolver.query(
+                collection, cols,
+                "${android.provider.MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?",
+                arrayOf(folder, "taime-auto-%"),
+                "${android.provider.MediaStore.MediaColumns.DATE_ADDED} DESC"
+            )?.use { c ->
+                var i = 0
+                while (c.moveToNext()) {
+                    if (i++ >= 4) {
+                        resolver.delete(android.content.ContentUris.withAppendedId(collection, c.getLong(0)), null, null)
+                    }
+                }
+            }
+        } else {
+            val dir = File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "Taime")
+            dir.mkdirs()
+            File(dir, name).writeBytes(bytes)
+            dir.listFiles { f -> f.name.startsWith("taime-auto-") }
+                ?.sortedByDescending { it.lastModified() }
+                ?.drop(4)
+                ?.forEach { it.delete() }
+        }
     }
 
     // --- Activity plumbing ---------------------------------------------------

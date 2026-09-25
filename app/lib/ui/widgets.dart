@@ -465,3 +465,18 @@ class EmptyState extends StatelessWidget {
     );
   }
 }
+
+/// Short message with "Annulla" that goes away by itself after a few seconds
+/// (with an action, Flutter would otherwise keep it on screen until tapped).
+void showUndo(ScaffoldMessengerState messenger, String message, Future<void> Function() undo) {
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(message),
+        persist: false,
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(label: 'Annulla', onPressed: undo),
+      ),
+    );
+}

@@ -122,7 +122,7 @@ class _FocusPageState extends State<FocusPage> {
           ? 'Pomodoro da ${s.pomoWorkMin} minuti'
           : 'Il gattino cresce mentre ti concentri';
     } else if (s.pomodoro) {
-      final mins = paused ? s.pomoBreakMin : s.pomoWorkMin;
+      final mins = paused ? Tracker.pomoBreakMinutes(s, segs) : s.pomoWorkMin;
       final left = open.startedAt.add(Duration(minutes: mins)).difference(_now);
       shown = left.isNegative ? Duration.zero : left;
       caption = paused ? 'Pausa · lavoro ${fmtHm(work)}' : kStageNames[stage];
@@ -138,7 +138,7 @@ class _FocusPageState extends State<FocusPage> {
         ? 0.0
         : s.pomodoro
         ? (_now.difference(open.startedAt).inSeconds /
-                  ((paused ? s.pomoBreakMin : s.pomoWorkMin) * 60))
+                  ((paused ? Tracker.pomoBreakMinutes(s, segs) : s.pomoWorkMin) * 60))
               .clamp(0.0, 1.0)
         : inHour / 60;
 
@@ -224,12 +224,20 @@ class _FocusPageState extends State<FocusPage> {
                   ? const SizedBox(height: 24)
                   : Padding(
                       padding: const EdgeInsets.only(top: 28),
-                      child: GestureDetector(
-                        onTap: () {
-                          overviewRequest.value = 'anno';
-                          shellTab.value = 2;
-                        },
-                        child: const ActivityHeatmap(weeks: 20),
+                      child: Column(
+                        children: [
+                          if (s.dailyGoalMin > 0) ...[
+                            GoalCard(goalMinutes: s.dailyGoalMin),
+                            const SizedBox(height: 12),
+                          ],
+                          GestureDetector(
+                            onTap: () {
+                              overviewRequest.value = 'anno';
+                              shellTab.value = 2;
+                            },
+                            child: const ActivityHeatmap(weeks: 20),
+                          ),
+                        ],
                       ),
                     ),
             ),

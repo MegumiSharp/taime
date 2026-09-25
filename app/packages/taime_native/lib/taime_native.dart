@@ -13,25 +13,36 @@ abstract final class TaimeNative {
     await _ch.invokeMethod('registerUi');
   }
 
-  /// Shows or refreshes the media-style focus notification.
+  /// Shows or refreshes the focus notification. The native side keeps it up
+  /// to date by itself (every 30 s) from these numbers.
   static Future<void> liveUpdate({
     required String title,
-    required String subtitle,
     required bool paused,
+    required bool pomodoro,
     required int color,
-    required int positionMs,
-    required int durationMs,
-    required int sinceMs,
-    String? artPath,
+    required int workedMs,
+    required int stampMs,
+    required int pauseStartMs,
+    required int segmentStartMs,
+    required int pomoMs,
+    required int deadlineMs,
+    required List<String?> art,
+    required List<String> stageNames,
+    required List<int> stageMinutes,
   }) => _ch.invokeMethod('live.update', {
     'title': title,
-    'subtitle': subtitle,
     'paused': paused,
+    'pomodoro': pomodoro,
     'color': color,
-    'positionMs': positionMs,
-    'durationMs': durationMs,
-    'sinceMs': sinceMs,
-    'artPath': artPath,
+    'workedMs': workedMs,
+    'stampMs': stampMs,
+    'pauseStartMs': pauseStartMs,
+    'segmentStartMs': segmentStartMs,
+    'pomoMs': pomoMs,
+    'deadlineMs': deadlineMs,
+    'art': art,
+    'stageNames': stageNames,
+    'stageMinutes': stageMinutes,
   });
 
   static Future<void> liveStop() => _ch.invokeMethod('live.stop');
@@ -57,4 +68,25 @@ abstract final class TaimeNative {
       _ch.invokeMethod('sound.preview', {'kind': kind, 'value': value});
 
   static Future<void> stopPreview() => _ch.invokeMethod('sound.stop');
+
+  /// Writes a backup into Download/Taime, keeping the newest 4 automatic ones.
+  static Future<void> saveBackup(String name, List<int> bytes) =>
+      _ch.invokeMethod('backup.save', {'name': name, 'bytes': Uint8List.fromList(bytes)});
+
+  /// Home-screen widget contents.
+  static Future<void> widgetUpdate({
+    required bool running,
+    required bool paused,
+    required String title,
+    required String subtitle,
+    required int sinceMs,
+    String? artPath,
+  }) => _ch.invokeMethod('widget.update', {
+    'running': running,
+    'paused': paused,
+    'title': title,
+    'subtitle': subtitle,
+    'sinceMs': sinceMs,
+    'artPath': artPath,
+  });
 }

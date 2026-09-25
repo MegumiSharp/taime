@@ -377,21 +377,13 @@ class _EditSheet extends StatelessWidget {
     await tracker.sync();
     nav.pop();
     Haptic.medium();
-    messenger.showSnackBar(
-      SnackBar(
-        content: const Text('Sessione eliminata'),
-        action: SnackBarAction(
-          label: 'Annulla',
-          onPressed: () async {
-            await db.into(db.sessions).insert(session);
-            for (final s in segs) {
-              await db.into(db.segments).insert(s);
-            }
-            await tracker.sync();
-          },
-        ),
-      ),
-    );
+    showUndo(messenger, 'Sessione eliminata', () async {
+      await db.into(db.sessions).insert(session);
+      for (final s in segs) {
+        await db.into(db.segments).insert(s);
+      }
+      await tracker.sync();
+    });
   }
 }
 

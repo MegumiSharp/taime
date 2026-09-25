@@ -1,8 +1,14 @@
 import 'package:drift/drift.dart';
 
+import 'package:taime_native/taime_native.dart';
+
 import 'db.dart';
+import 'kitten/art.dart';
+import 'kitten/skins.dart';
 import 'notif.dart';
+import 'palette.dart';
 import 'settings.dart';
+import 'theme.dart';
 
 /// Deadline kinds stored on a segment.
 const kAutoPause = 'autoPause'; // work segment: turn into a pause when it expires
@@ -18,9 +24,10 @@ class Tracker {
 
   Future<Settings> _settings() async => Settings(await db.allPrefs());
 
-  Future<void> start(int activityId, {String note = ''}) async {
+  Future<void> start(int activityId, {String note = '', String? skinId}) async {
     await stop();
     final now = DateTime.now();
+    final skin = skinId ?? (await _settings()).activeSkin;
     final id = await db
         .into(db.sessions)
         .insert(
@@ -28,10 +35,19 @@ class Tracker {
             activityId: activityId,
             note: Value(note),
             startedAt: now,
+            skinId: Value(skin),
           ),
         );
     await _openWork(id, now);
     await db.setPref('lastActivityId', '$activityId');
+    await sync();
+  }
+
+  /// Throws the running session away, as if it never started.
+  Future<void> cancel() async {
+    final session = await db.openSession();
+    if (session == null) return;
+    await db.deleteSession(session.id);
     await sync();
   }
 
@@ -216,7 +232,7 @@ class Tracker {
   Future<void> _sync() async {
     final seg = await db.openSegment();
     if (seg == null) {
-      await hideOngoing();
+      await TaimeNative.liveStop();
       await cancelReminder();
       return;
     }
@@ -224,17 +240,31 @@ class Tracker {
     final session = await db.openSession();
     final act = session == null ? null : await db.activityById(session.activityId);
     final name = act?.name ?? 'Attività';
+    final color = accentFor(act?.color ?? 0xFF93C4A0, dark: false);
+    final segs = await db.segmentsOf(seg.sessionId);
+    final now = DateTime.now();
+    final work = worked(segs, now: now);
+    final skinId = session?.skinId ?? s.activeSkin;
+    final hourMs = const Duration(hours: 1).inMilliseconds;
+    final inHourMs = work.inMilliseconds % hourMs;
+    final adults = work.inMinutes ~/ 60;
+    final stage = stageOf(inHourMs / 60000);
 
     if (seg.isPause) {
-      await showOngoing(
-        title: 'In pausa · $name',
-        body: 'Tocca Riprendi quando torni',
-        since: seg.startedAt,
-        actions: [action('resume', 'Riprendi'), action('stop', 'Stop')],
-      );
       final mins = s.pomodoro ? s.pomoBreakMin : s.pauseReminderMin;
+      await TaimeNative.liveUpdate(
+        title: 'In pausa · $name',
+        subtitle: 'Dalle ${_hm(seg.startedAt)} · lavoro ${fmtHm(work)}',
+        paused: true,
+        color: oklch(0.72, 0.12, kPauseHue),
+        positionMs: s.pomodoro ? now.difference(seg.startedAt).inMilliseconds : inHourMs,
+        durationMs: s.pomodoro ? s.pomoBreakMin * 60000 : hourMs,
+        sinceMs: seg.startedAt.millisecondsSinceEpoch,
+        artPath: await kittenArtPath(skinId, stage, sleeping: true),
+      );
       if (mins > 0) {
         await scheduleReminder(
+          settings: s,
           at: seg.startedAt.add(Duration(minutes: mins)),
           title: 'Torna al lavoro',
           body: 'La pausa di $mins minuti è finita',
@@ -246,24 +276,32 @@ class Tracker {
       return;
     }
 
-    final segs = await db.segmentsOf(seg.sessionId);
-    await showOngoing(
+    final cats = adults == 0 ? '' : ' · $adults ${adults == 1 ? 'gatto' : 'gatti'}';
+    await TaimeNative.liveUpdate(
       title: name,
-      body: s.pomodoro ? 'Pomodoro in corso' : 'Timer in corso',
-      since: DateTime.now().subtract(worked(segs)),
-      actions: [action('pause', 'Pausa'), action('stop', 'Stop')],
+      subtitle: s.pomodoro
+          ? 'Pomodoro · ${kStageNames[stage]}$cats'
+          : '${kStageNames[stage]}$cats',
+      paused: false,
+      color: color,
+      positionMs: s.pomodoro ? now.difference(seg.startedAt).inMilliseconds : inHourMs,
+      durationMs: s.pomodoro ? s.pomoWorkMin * 60000 : hourMs,
+      sinceMs: now.subtract(work).millisecondsSinceEpoch,
+      artPath: await kittenArtPath(skinId, stage),
     );
 
     final due = seg.deadlineAt;
     if (s.pomodoro && due != null) {
       await scheduleReminder(
+        settings: s,
         at: due,
         title: 'Pomodoro finito',
         body: 'Pausa di ${s.pomoBreakMin} minuti',
-        actions: [action('stop', 'Stop')],
+        actions: [action('stop', 'Termina')],
       );
     } else if (s.breakMode == 'auto' && due != null) {
       await scheduleReminder(
+        settings: s,
         at: due,
         title: 'Pausa automatica',
         body: 'Hai lavorato ${s.breakAfterMin} minuti. Prendi la pausa?',
@@ -274,6 +312,7 @@ class Tracker {
       );
     } else if (s.breakAfterMin > 0) {
       await scheduleReminder(
+        settings: s,
         at: seg.startedAt.add(Duration(minutes: s.breakAfterMin)),
         title: 'Fai una pausa',
         body: 'Stai lavorando da ${s.breakAfterMin} minuti',
@@ -283,6 +322,9 @@ class Tracker {
       await cancelReminder();
     }
   }
+
+  static String _hm(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   Future<void> handleAction(String? actionId) async {
     switch (actionId) {

@@ -1,5 +1,7 @@
 import 'db.dart';
 import 'tracker.dart';
 
-final db = Db();
-final tracker = Tracker(db);
+/// App-wide handles. Top-level variables start lazily, so tests can assign an
+/// in-memory database before anything reads these.
+Db db = Db();
+Tracker tracker = Tracker(db);

@@ -1,0 +1,4 @@
+CREATE TABLE "activities" ("id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "name" TEXT NOT NULL, "color_index" INTEGER NOT NULL, "icon" TEXT NOT NULL DEFAULT 'circle', "archived" INTEGER NOT NULL DEFAULT 0 CHECK ("archived" IN (0, 1)), "sort" INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE "prefs" ("key" TEXT NOT NULL, "value" TEXT NOT NULL, PRIMARY KEY ("key"));
+CREATE TABLE "segments" ("id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "session_id" INTEGER NOT NULL REFERENCES sessions (id) ON DELETE CASCADE, "is_pause" INTEGER NOT NULL CHECK ("is_pause" IN (0, 1)), "started_at" INTEGER NOT NULL, "ended_at" INTEGER NULL, "deadline_at" INTEGER NULL, "deadline_kind" TEXT NULL);
+CREATE TABLE "sessions" ("id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "activity_id" INTEGER NOT NULL REFERENCES activities (id), "note" TEXT NOT NULL DEFAULT '', "started_at" INTEGER NOT NULL, "ended_at" INTEGER NULL);

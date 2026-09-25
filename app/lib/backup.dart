@@ -9,28 +9,29 @@ import 'package:share_plus/share_plus.dart';
 
 import 'app.dart';
 import 'db.dart';
+import 'kitten/skins.dart';
+import 'palette.dart';
 
-/// JSON backup (re-importable) and CSV export (for spreadsheets).
-Future<Map<String, dynamic>> _dump() async {
+/// JSON backup (re-importable, v1 and v2) and CSV export (for spreadsheets).
+const int kBackupVersion = 2;
+
+String? _iso(DateTime? d) => d?.toIso8601String();
+DateTime? _parse(Object? v) => v == null ? null : DateTime.parse(v as String);
+
+Future<Map<String, dynamic>> dumpAll(Db db) async {
   final acts = await db.select(db.activities).get();
   final sess = await db.select(db.sessions).get();
   final segs = await db.select(db.segments).get();
-  final prefs = await db.allPrefs();
-  String? iso(DateTime? d) => d?.toIso8601String();
+  final buys = await db.select(db.purchases).get();
+  final cats = await db.select(db.todoCategories).get();
+  final todos = await db.select(db.todos).get();
   return {
     'app': 'taime',
-    'version': 1,
+    'version': kBackupVersion,
     'exportedAt': DateTime.now().toIso8601String(),
     'activities': [
       for (final a in acts)
-        {
-          'id': a.id,
-          'name': a.name,
-          'colorIndex': a.colorIndex,
-          'icon': a.icon,
-          'archived': a.archived,
-          'sort': a.sort,
-        },
+        {'id': a.id, 'name': a.name, 'color': a.color, 'icon': a.icon, 'archived': a.archived, 'sort': a.sort},
     ],
     'sessions': [
       for (final s in sess)
@@ -38,8 +39,9 @@ Future<Map<String, dynamic>> _dump() async {
           'id': s.id,
           'activityId': s.activityId,
           'note': s.note,
-          'startedAt': iso(s.startedAt),
-          'endedAt': iso(s.endedAt),
+          'startedAt': _iso(s.startedAt),
+          'endedAt': _iso(s.endedAt),
+          'skinId': s.skinId,
         },
     ],
     'segments': [
@@ -48,12 +50,138 @@ Future<Map<String, dynamic>> _dump() async {
           'id': s.id,
           'sessionId': s.sessionId,
           'isPause': s.isPause,
-          'startedAt': iso(s.startedAt),
-          'endedAt': iso(s.endedAt),
+          'startedAt': _iso(s.startedAt),
+          'endedAt': _iso(s.endedAt),
+          'deadlineAt': _iso(s.deadlineAt),
+          'deadlineKind': s.deadlineKind,
         },
     ],
-    'prefs': prefs,
+    'purchases': [
+      for (final p in buys) {'id': p.id, 'skinId': p.skinId, 'price': p.price, 'purchasedAt': _iso(p.purchasedAt)},
+    ],
+    'todoCategories': [
+      for (final c in cats) {'id': c.id, 'name': c.name, 'color': c.color, 'sort': c.sort},
+    ],
+    'todos': [
+      for (final t in todos)
+        {
+          'id': t.id,
+          'parentId': t.parentId,
+          'categoryId': t.categoryId,
+          'title': t.title,
+          'notes': t.notes,
+          'due': _iso(t.due),
+          'hasTime': t.hasTime,
+          'priority': t.priority,
+          'recurrence': t.recurrence,
+          'remindBefore': t.remindBefore,
+          'completedAt': _iso(t.completedAt),
+          'sort': t.sort,
+          'createdAt': _iso(t.createdAt),
+        },
+    ],
+    'prefs': await db.allPrefs(),
   };
+}
+
+/// Replaces everything in [db] with [data]. Accepts version 1 and 2 backups.
+Future<int> restoreAll(Db db, Map<String, dynamic> data) async {
+  final version = (data['version'] as int?) ?? 1;
+  final prefs = (data['prefs'] as Map?)?.cast<String, String>() ?? const {};
+  final parsed = parsePalette(prefs['palette'] ?? '');
+  final palette = parsed.isEmpty ? defaultPalette : parsed;
+  List<Map<String, dynamic>> list(String k) => ((data[k] as List?) ?? const []).cast<Map<String, dynamic>>();
+
+  await db.transaction(() async {
+    for (final t in <TableInfo<Table, dynamic>>[db.todos, db.todoCategories, db.purchases, db.segments, db.sessions, db.activities, db.prefs]) {
+      await db.delete(t).go();
+    }
+    for (final a in list('activities')) {
+      final color = version >= 2
+          ? a['color'] as int
+          : palette[((a['colorIndex'] as int?) ?? 0) % palette.length];
+      await db.into(db.activities).insert(
+        ActivitiesCompanion.insert(
+          id: Value(a['id'] as int),
+          name: a['name'] as String,
+          color: color,
+          icon: Value(a['icon'] as String? ?? 'circle'),
+          archived: Value(a['archived'] as bool? ?? false),
+          sort: Value(a['sort'] as int? ?? 0),
+        ),
+      );
+    }
+    for (final s in list('sessions')) {
+      await db.into(db.sessions).insert(
+        SessionsCompanion.insert(
+          id: Value(s['id'] as int),
+          activityId: s['activityId'] as int,
+          note: Value(s['note'] as String? ?? ''),
+          startedAt: _parse(s['startedAt'])!,
+          endedAt: Value(_parse(s['endedAt'])),
+          skinId: Value(s['skinId'] as String?),
+        ),
+      );
+    }
+    for (final s in list('segments')) {
+      await db.into(db.segments).insert(
+        SegmentsCompanion.insert(
+          id: Value(s['id'] as int),
+          sessionId: s['sessionId'] as int,
+          isPause: s['isPause'] as bool,
+          startedAt: _parse(s['startedAt'])!,
+          endedAt: Value(_parse(s['endedAt'])),
+          deadlineAt: Value(_parse(s['deadlineAt'])),
+          deadlineKind: Value(s['deadlineKind'] as String?),
+        ),
+      );
+    }
+    for (final p in list('purchases')) {
+      await db.into(db.purchases).insert(
+        PurchasesCompanion.insert(
+          id: Value(p['id'] as int),
+          skinId: p['skinId'] as String,
+          price: p['price'] as int,
+          purchasedAt: _parse(p['purchasedAt'])!,
+        ),
+      );
+    }
+    for (final c in list('todoCategories')) {
+      await db.into(db.todoCategories).insert(
+        TodoCategoriesCompanion.insert(
+          id: Value(c['id'] as int),
+          name: c['name'] as String,
+          color: c['color'] as int,
+          sort: Value(c['sort'] as int? ?? 0),
+        ),
+      );
+    }
+    // Parents before subtasks.
+    final todos = [...list('todos')]..sort((a, b) => (a['parentId'] == null ? 0 : 1).compareTo(b['parentId'] == null ? 0 : 1));
+    for (final t in todos) {
+      await db.into(db.todos).insert(
+        TodosCompanion.insert(
+          id: Value(t['id'] as int),
+          parentId: Value(t['parentId'] as int?),
+          categoryId: Value(t['categoryId'] as int?),
+          title: t['title'] as String,
+          notes: Value(t['notes'] as String? ?? ''),
+          due: Value(_parse(t['due'])),
+          hasTime: Value(t['hasTime'] as bool? ?? false),
+          priority: Value(t['priority'] as int? ?? 4),
+          recurrence: Value(t['recurrence'] as String?),
+          remindBefore: Value(t['remindBefore'] as int?),
+          completedAt: Value(_parse(t['completedAt'])),
+          sort: Value(t['sort'] as int? ?? 0),
+          createdAt: _parse(t['createdAt']) ?? DateTime.now(),
+        ),
+      );
+    }
+    for (final e in prefs.entries) {
+      await db.setPref(e.key, e.value);
+    }
+  });
+  return list('sessions').length;
 }
 
 Future<File> _write(String name, String content) async {
@@ -68,107 +196,43 @@ String _stamp() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 Future<void> exportJson() async {
   final f = await _write(
     'taime-backup-${_stamp()}.json',
-    const JsonEncoder.withIndent('  ').convert(await _dump()),
+    const JsonEncoder.withIndent('  ').convert(await dumpAll(db)),
   );
-  await SharePlus.instance.share(
-    ShareParams(files: [XFile(f.path)], subject: 'Backup Taime'),
-  );
+  await SharePlus.instance.share(ShareParams(files: [XFile(f.path)], subject: 'Backup Taime'));
 }
 
 Future<void> exportCsv() async {
   final acts = {for (final a in await db.select(db.activities).get()) a.id: a};
   final sess = await db.select(db.sessions).get();
   final fmt = DateFormat('yyyy-MM-dd HH:mm');
-  final rows = <String>[
-    'attivita,nota,inizio,fine,minuti_lavoro,minuti_pausa',
-  ];
+  final rows = <String>['attivita,nota,inizio,fine,minuti_lavoro,minuti_pausa,gattino'];
+  String q(String s) => '"${s.replaceAll('"', "'").replaceAll('\n', ' ')}"';
   for (final s in sess) {
     final segs = await db.segmentsOf(s.id);
     Duration sum(bool pause) => segs
         .where((x) => x.isPause == pause && x.endedAt != null)
         .fold(Duration.zero, (a, x) => a + x.endedAt!.difference(x.startedAt));
-    final name = (acts[s.activityId]?.name ?? '').replaceAll('"', "'");
-    final note = s.note.replaceAll('"', "'").replaceAll('\n', ' ');
     rows.add(
-      '"$name","$note",${fmt.format(s.startedAt)},'
+      '${q(acts[s.activityId]?.name ?? '')},${q(s.note)},${fmt.format(s.startedAt)},'
       '${s.endedAt == null ? '' : fmt.format(s.endedAt!)},'
-      '${sum(false).inMinutes},${sum(true).inMinutes}',
+      '${sum(false).inMinutes},${sum(true).inMinutes},${q(skinById(s.skinId).name)}',
     );
   }
   final f = await _write('taime-${_stamp()}.csv', rows.join('\n'));
-  await SharePlus.instance.share(
-    ShareParams(files: [XFile(f.path)], subject: 'Taime CSV'),
-  );
+  await SharePlus.instance.share(ShareParams(files: [XFile(f.path)], subject: 'Taime CSV'));
 }
 
-/// Replaces everything with the contents of a backup file.
-/// Returns a short message for the user.
+/// Picks a backup file and restores it. Returns a short message.
 Future<String> importJson() async {
-  final picked = await FilePicker.pickFiles(type: FileType.any);
-  final file = picked.firstOrNull;
+  final file = (await FilePicker.pickFiles(type: FileType.any)).firstOrNull;
   if (file == null) return 'Importazione annullata';
-
-  final raw = utf8.decode(await file.xFile.readAsBytes());
   final Map<String, dynamic> data;
   try {
-    data = jsonDecode(raw) as Map<String, dynamic>;
+    data = jsonDecode(utf8.decode(await file.xFile.readAsBytes())) as Map<String, dynamic>;
   } on FormatException {
     return 'File non valido';
   }
   if (data['app'] != 'taime') return 'Non è un backup di Taime';
-
-  DateTime? parse(Object? v) => v == null ? null : DateTime.parse(v as String);
-
-  await db.transaction(() async {
-    await db.delete(db.segments).go();
-    await db.delete(db.sessions).go();
-    await db.delete(db.activities).go();
-    await db.delete(db.prefs).go();
-
-    for (final a in (data['activities'] as List).cast<Map<String, dynamic>>()) {
-      await db
-          .into(db.activities)
-          .insert(
-            ActivitiesCompanion.insert(
-              id: Value(a['id'] as int),
-              name: a['name'] as String,
-              colorIndex: a['colorIndex'] as int,
-              icon: Value(a['icon'] as String),
-              archived: Value(a['archived'] as bool),
-              sort: Value(a['sort'] as int),
-            ),
-          );
-    }
-    for (final s in (data['sessions'] as List).cast<Map<String, dynamic>>()) {
-      await db
-          .into(db.sessions)
-          .insert(
-            SessionsCompanion.insert(
-              id: Value(s['id'] as int),
-              activityId: s['activityId'] as int,
-              note: Value(s['note'] as String? ?? ''),
-              startedAt: parse(s['startedAt'])!,
-              endedAt: Value(parse(s['endedAt'])),
-            ),
-          );
-    }
-    for (final s in (data['segments'] as List).cast<Map<String, dynamic>>()) {
-      await db
-          .into(db.segments)
-          .insert(
-            SegmentsCompanion.insert(
-              id: Value(s['id'] as int),
-              sessionId: s['sessionId'] as int,
-              isPause: s['isPause'] as bool,
-              startedAt: parse(s['startedAt'])!,
-              endedAt: Value(parse(s['endedAt'])),
-            ),
-          );
-    }
-    for (final e in (data['prefs'] as Map).entries) {
-      await db.setPref(e.key as String, e.value as String);
-    }
-  });
-  final n = (data['sessions'] as List).length;
+  final n = await restoreAll(db, data);
   return 'Importate $n sessioni';
 }

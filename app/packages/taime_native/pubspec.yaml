@@ -1,0 +1,19 @@
+name: taime_native
+description: "Taime: live focus notification (MediaStyle), alarm sounds, system sound picker."
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.4
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.megumi.taime_native
+        pluginClass: TaimeNativePlugin

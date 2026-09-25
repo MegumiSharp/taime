@@ -10,9 +10,13 @@ class Settings {
   int _int(String k, int d) => int.tryParse(_m[k] ?? '') ?? d;
   bool _bool(String k, bool d) => (_m[k] ?? (d ? '1' : '0')) == '1';
 
-  /// 'system' | 'dark' | 'light'
-  String get themeMode => _m['themeMode'] ?? 'dark';
+  /// 'light' | 'dark' | 'system'
+  String get themeMode => _m['themeMode'] ?? 'light';
 
+  /// 'salvia' | 'lavanda' | 'azzurro' | 'custom'
+  String get theme => _m['theme'] ?? 'salvia';
+
+  /// Only used by the 'custom' theme.
   List<int> get palette {
     final p = parsePalette(_m['palette'] ?? '');
     return p.isEmpty ? defaultPalette : p;
@@ -37,4 +41,17 @@ class Settings {
   int get weekStart => _int('weekStart', 1);
 
   int get lastActivityId => _int('lastActivityId', 0);
+
+  String get activeSkin => _m['activeSkin'] ?? 'biscotto';
+
+  /// 'bundled' | 'system' | 'file'
+  String get soundKind => _m['soundKind'] ?? 'bundled';
+
+  /// Bundled sound id, or a content/file uri.
+  String get soundValue => _m['soundValue'] ?? 'campanella';
+  String get soundName => _m['soundName'] ?? 'Campanella';
+
+  /// Ring until touched (max 1 minute) instead of once.
+  bool get soundLoop => _bool('soundLoop', false);
+  bool get soundVibrate => _bool('soundVibrate', true);
 }

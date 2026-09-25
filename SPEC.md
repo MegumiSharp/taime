@@ -1,92 +1,36 @@
-# Time Tracker — Specifiche v1
+# Taime — Specifiche 2.0
 
-App Android (APK) personale per cronometrare il tempo speso sulle attività. Nessun account, nessun server: dati in SQLite sul telefono, con export/import.
+App Android personale per concentrarsi e tracciare il tempo, nello spirito di Forest: mentre lavori un gattino cresce, il tempo diventa crocchette per comprare nuovi gattini, i giorni riempiono un recinto. Nessun account, nessun server: dati in SQLite sul telefono, con backup.
+
+La richiesta completa della 2.0 è in `Aggiornamento Taime/PROMPT Taime 2.0.md`.
 
 ## Stack
-- **Flutter** (Android ora; desktop/web possibili in futuro dallo stesso codice)
-- **drift** (SQLite) — database locale
-- **flutter_local_notifications** — notifica fissa con cronometro, promemoria programmati con suono custom (funzionano ad app chiusa)
-- **fl_chart** — grafici
-- **Icone Material "rounded"** (incluse in Flutter). `phosphor_flutter` è stato scartato: incompatibile con Flutter 3.47 (`IconData` è diventata una classe `final`)
-- Font **Nunito** incluso nell'APK (offline), cifre tabulari per il timer
-- **share_plus / file_picker** — export/import
+- Flutter 3.47, Android. Database **drift** (schema v2, migrazione dalla 1.0 testata).
+- Plugin locale `app/packages/taime_native` (Kotlin): notifica "player" con MediaSession in un foreground service, selettore dei suoni di sistema, anteprima audio sul canale sveglia, uri condivisibili per i file audio.
+- `flutter_local_notifications` per i promemoria (canale "allarme", passano il Non disturbare) e per i to-do.
+- Icone Material "rounded", font Nunito incluso (200–800).
 
-## Concetti
-- **Attività**: la categoria su cui si lavora (es. Studio, Palestra, Pulizie). Nome, colore, icona. Una per sessione, niente tag.
-- **Sessione**: da Start a Stop, su un'attività, con nota opzionale.
-- **Segmento**: pezzo di una sessione, tipo `lavoro` o `pausa`. Tempo lavorato = somma dei segmenti lavoro; le pause si contano a parte.
+## Schermate
+- **Focus**: attività in alto (lista scorribile sfocata, editor con 28 colori + colore libero e 140+ icone cercabili), nota, gattino nella bolla, cronometro (conto alla rovescia solo in Pomodoro), "Annulla (10)" nei primi 10 s, Pausa/Termina, pausa arancione con caffè e gattino che dorme, grafico stile GitHub delle ultime 20 settimane, riepilogo a fine sessione.
+- **To-do**: Oggi (scaduti in cima) / Prossimi 7 giorni / Tutti (riordinabili), categorie a tendina, inserimento rapido con date in italiano evidenziate, ricorrenze, priorità, sottotask, promemoria, swipe, "Annulla", "Avvia focus".
+- **Panoramica**: recinto isometrico (ogni tile un giorno, anno = 12 mesi), dettaglio giorno = registro modificabile, statistiche (distribuzione, attività, trend, abitudini, gattini preferiti, totale di sempre), calendario.
+- **Negozio**: In evidenza / Tutti / I miei gattini, anteprima con pose e crescita, acquisto.
+- **Impostazioni** (icona in alto a sinistra nel Focus): temi Salvia / Lavanda / Azzurro polvere / Personalizzato (Coolors), chiaro/scuro/sistema, attività, pause, suoni, Pomodoro, galleria gattini, backup.
 
-## Timer (schermata principale)
-- Pulsante circolare grande con anello di progresso. Sotto: attività selezionata (tap per cambiarla), nota opzionale.
-- **Start** → apre sessione + segmento lavoro.
-- **Pausa** → chiude il segmento lavoro, apre segmento pausa. Il cronometro principale si ferma, parte il cronometro della pausa (visibile, stile diverso).
-- **Riprendi** → chiude la pausa, apre nuovo segmento lavoro; il cronometro principale riparte da dove era.
-- **Stop** → chiude tutto, sessione salvata.
-- Cambiare attività durante una sessione = riassegna la sessione corrente (per correggere un avvio sbagliato). Avviare un'altra attività dalle recenti ferma la corrente e ne apre una nuova.
-- Lista "recenti" sotto il timer con ▶ per ripartire al volo.
-- **Notifica fissa** mentre il timer è attivo: tempo che scorre + pulsanti Pausa/Riprendi e Stop.
-- Stato salvato solo nel DB (timestamp): chiusura forzata o riavvio del telefono non perdono nulla.
+## Regole
+- **Crescita**: in base al lavoro della sessione (la pausa la congela). Neonato 0', Cucciolo 10', Giovane 25', Quasi adulto 45', Adulto 60'.
+- **Recinto**: per sessione, un gatto adulto per ogni ora completa + un cucciolo per i minuti restanti (se almeno 5). Calcolato dalle sessioni, quindi le modifiche al registro si riflettono.
+- **Crocchette**: 1 per minuto di lavoro (anche lo storico della 1.0) meno la spesa. Saldo mostrato mai sotto 0.
+- **Gattini**: 32 skin disegnate in codice (`lib/kitten/`), 4 rarità, 3 gratuite.
+- **Timer**: tutto lo stato è fatto di timestamp nel database; le scadenze (pausa automatica, fine pomodoro) si applicano con `Tracker.materialize()`.
+- **Suoni**: 5 inclusi (generati da `tool/make_sounds.py`), suoni del telefono, file personale; flusso sveglia, una volta o finché non tocchi (max 1 min).
 
-### Promemoria
-- **Fai una pausa**: dopo X di lavoro continuo (default 2h, configurabile, disattivabile) → notifica con suono. Comportamento scelto in Impostazioni:
-  - **Solo avviso** (default): notifica, il timer continua.
-  - **Pausa automatica**: allo scadere di X il lavoro si ferma e parte la pausa; notifica con suono "Prendi la pausa?" con pulsanti **Sì** / **No, continua**.
-    - Sì → la pausa prosegue (con il promemoria di fine pausa).
-    - No → la pausa viene annullata e il tempo tra lo scadere e la risposta conta come lavoro, senza buchi; il promemoria si riprogramma tra altri X.
-    - Nessuna risposta → resta in pausa; se era un errore si corregge dal Registro.
-  - Il passaggio avviene all'orario esatto anche con app chiusa o telefono bloccato: lo stato è fatto di timestamp, quindi la pausa risulta iniziata allo scadere esatto, non a quando rispondi.
-- **Suono**: i promemoria usano il suono di notifica di sistema (scegli tu quale dalle impostazioni Android del canale "Promemoria"). Un file audio personale dentro l'app è rimandato.
-- **Fine pausa**: dopo Y di pausa (default 15 min, configurabile) → notifica con suono "torna al lavoro". Ignorabile, la pausa continua finché non premi Riprendi.
-- Programmati all'inizio del segmento, cancellati al cambio di stato.
+## Dati e backup
+- Backup JSON v2 (sessioni, attività, gattini acquistati, to-do, impostazioni); l'import accetta anche i backup v1.
+- CSV per fogli di calcolo.
 
-### Pomodoro (opzionale)
-- Interruttore Cronometro / Pomodoro sulla schermata timer, durate in Impostazioni (default 25 lavoro / 5 pausa / 15 pausa lunga ogni 4).
-- Conto alla rovescia; a fine lavoro suono + passaggio automatico alla pausa; a fine pausa suono, il lavoro successivo si avvia con un tap.
-- Salva sessioni/segmenti identici al cronometro → stesse statistiche.
-
-## Registro (log modificabile)
-- Sessioni raggruppate per giorno, con totale del giorno.
-- Card sessione: attività · orario inizio–fine · tempo lavoro · tempo pausa, con mini-timeline colorata dei segmenti.
-- Tap → foglio di modifica: attività, nota, lista segmenti con orari modificabili (selettori nativi), aggiungi/elimina segmento, elimina sessione.
-- Aggiunta manuale di una sessione ("ho dimenticato di avviarlo").
-- Validazione: fine dopo inizio, avviso su sovrapposizioni. Eliminazione con "Annulla".
-
-## Statistiche
-- Periodo: Giorno / Settimana / Mese / Anno, con frecce avanti/indietro.
-- Totale lavoro (e pausa) del periodo.
-- Barre per sotto-periodo (ore / giorni / mesi) impilate per attività.
-- Ciambella + tabella attività → ore → %.
-- Mappa attività annuale stile GitHub.
-- Totale di sempre per attività.
-
-## Impostazioni
-- Tema: Scuro / Chiaro / Sistema.
-- Palette Coolors (incolla URL o codici hex), anteprima, ripristina default.
-- Attività: crea, rinomina, colore, icona, archivia, riordina. Default: Studio, Palestra, Pulizie.
-- Promemoria pausa (on/off, durata, comportamento: solo avviso / pausa automatica), fine pausa (durata), suono (preimpostati o file personale), volume/vibrazione.
-- Pomodoro: durate.
-- Primo giorno della settimana.
-- Backup: esporta JSON (completo, reimportabile), esporta CSV, importa JSON.
-
-## Design
-- Minimale, card in stile bento (raggio 20–24px, bordi sottili), navigazione a pillola in basso: **Timer · Registro · Statistiche · Impostazioni**.
-- **Scuro**: sfondo quasi nero neutro con appena una sfumatura della tonalità principale.
-- **Chiaro**: sfondo guscio d'uovo (~#F3EFE6), testo grigio scuro caldo, niente bianco puro.
-- **Regole palette** (in OKLCH): la palette colora solo accenti e attività; gli sfondi restano neutri (croma ≤ 0.02). Gli accenti vengono ricondotti a luminosità/saturazione sicure per il tema (scuro: L 0.70–0.82; chiaro: L 0.45–0.60; croma max ~0.14), il testo sopra l'accento è scelto automaticamente nero/bianco per contrasto ≥ 4.5. Uno sfondo fucsia è impossibile per costruzione.
-
-## Modello dati
-```
-activities  id, name, color, icon, archived, sort
-sessions    id, activity_id, note, started_at, ended_at (null = in corso)
-segments    id, session_id, kind (work|pause), started_at, ended_at (null = in corso)
-settings    key, value
-```
-Al massimo un segmento aperto alla volta.
-
-## Fuori dalla v1
-Desktop, sincronizzazione, backup automatico, tag, obiettivi giornalieri.
-
-## Note operative
-- APK firmato sempre con la stessa chiave: `taime-release-key.jks` nella cartella del progetto, password in `app/android/key.properties`. **Da conservare**: senza, gli aggiornamenti non si installano sopra e serve disinstallare (backup → reinstalla → importa).
-- Build: `flutter build apk --release` da `app/`.
-- Permessi: notifiche, sveglie esatte (promemoria puntuali anche in risparmio energetico).
+## Sviluppo
+- Test: `flutter test` (migrazione, parser date, regola dei gatti, crocchette, contrasto temi, timer, palette).
+- Anteprima gattini: `flutter test tool/render_kittens_test.dart` → `build/kittens/*.png`.
+- Build: `flutter build apk --release --split-per-abi` da `app/`, sempre con la chiave `taime-release-key.jks` (non su GitHub: tienine una copia a parte).
+- Le build di debug si installano come "Taime dev", accanto all'app vera.

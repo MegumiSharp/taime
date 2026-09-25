@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' show Color;
 
 /// Palette handling.
 ///
@@ -164,4 +163,12 @@ int backgroundFor(List<int> palette, {required bool dark, double level = 0}) {
   return fromOklch(ls[level.clamp(0, 2).toInt()], 0.016, 85);
 }
 
-Color color(int argb) => Color(argb);
+/// Pastel fill version of any colour: chips, tiles, soft backgrounds.
+int softFillFor(int argb, {required bool dark}) {
+  final o = toOklch(argb);
+  final c = o.c < 0.02 ? o.c : (dark ? 0.045 : 0.05);
+  return fromOklch(dark ? 0.36 : 0.90, c, o.h);
+}
+
+/// Shortcut: a colour from OKLCH components.
+int oklch(double l, double c, double h) => fromOklch(l, c, h);

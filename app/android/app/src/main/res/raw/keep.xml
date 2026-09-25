@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reminder sounds are referenced by name at runtime: keep them in release builds. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/campanella,@raw/marimba,@raw/gong,@raw/duenote,@raw/carillon" />

@@ -14,7 +14,7 @@ La richiesta completa della 2.0 è in `Aggiornamento Taime/PROMPT Taime 2.0.md`.
 
 ## Stack
 - Flutter 3.47, Android. Database **drift** (schema v2, migrazione dalla 1.0 testata).
-- Plugin locale `app/packages/taime_native` (Kotlin): notifica "player" con MediaSession in un foreground service, selettore dei suoni di sistema, anteprima audio sul canale sveglia, uri condivisibili per i file audio.
+- Plugin locale `app/packages/taime_native` (Kotlin): notifica del focus con layout personalizzato in un foreground service (si aggiorna ogni 30 s), widget Home, ripristino dopo il riavvio, backup in Download, selettore dei suoni di sistema, anteprima audio sul canale sveglia.
 - `flutter_local_notifications` per i promemoria (canale "allarme", passano il Non disturbare) e per i to-do.
 - Icone Material "rounded", font Nunito incluso (200–800).
 

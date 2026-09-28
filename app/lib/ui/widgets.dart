@@ -32,8 +32,8 @@ class SoftCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(radius),
         boxShadow: [
           BoxShadow(
-            color: tc.text.withValues(alpha: tc.dark ? 0.18 : 0.05),
-            blurRadius: 18,
+            color: tc.shadow(),
+            blurRadius: 16,
             offset: const Offset(0, 6),
           ),
         ],
@@ -137,8 +137,8 @@ class PillButton extends StatelessWidget {
         boxShadow: kind == PillKind.surface || kind == PillKind.primary
             ? [
                 BoxShadow(
-                  color: tc.text.withValues(alpha: tc.dark ? 0.2 : 0.07),
-                  blurRadius: 16,
+                  color: tc.shadow(1.2),
+                  blurRadius: 14,
                   offset: const Offset(0, 5),
                 ),
               ]
@@ -227,7 +227,7 @@ class PillSelector<T> extends StatelessWidget {
                     borderRadius: BorderRadius.circular(40),
                     boxShadow: [
                       BoxShadow(
-                        color: tc.text.withValues(alpha: 0.08),
+                        color: tc.shadow(1.2),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -258,7 +258,10 @@ class PillSelector<T> extends StatelessWidget {
                                   ? (color ?? tc.text)
                                   : tc.muted,
                             ),
-                            child: Text(labels[i], maxLines: 1),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: FittedBox(fit: BoxFit.scaleDown, child: Text(labels[i], maxLines: 1)),
+                            ),
                           ),
                         ),
                       ),
@@ -479,4 +482,63 @@ void showUndo(ScaffoldMessengerState messenger, String message, Future<void> Fun
         action: SnackBarAction(label: 'Annulla', onPressed: undo),
       ),
     );
+}
+
+/// A small rounded choice: tinted when [selected]. Used for "Oggi / Settimana",
+/// date, repeat, reminder...
+class SoftChip extends StatelessWidget {
+  const SoftChip({
+    super.key,
+    required this.label,
+    this.icon,
+    this.selected = false,
+    this.onTap,
+    this.color,
+    this.dot,
+  });
+
+  final String label;
+  final IconData? icon;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  /// Overrides the accent (priority colours).
+  final Color? color;
+
+  /// A coloured dot instead of an icon (categories).
+  final Color? dot;
+
+  @override
+  Widget build(BuildContext context) {
+    final tc = context.tc;
+    final accent = color ?? tc.accent;
+    final chip = AnimatedContainer(
+      duration: Motion.of(context, Motion.fast),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: selected ? Color.lerp(accent, tc.surface, tc.dark ? 0.7 : 0.8) : tc.raised,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: selected ? accent.withValues(alpha: 0.6) : Colors.transparent, width: 1.2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (dot != null)
+            Container(width: 10, height: 10, decoration: BoxDecoration(color: dot, shape: BoxShape.circle))
+          else if (icon != null)
+            Icon(icon, size: 16, color: selected ? accent : tc.muted),
+          if (dot != null || icon != null) const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              fontSize: 13,
+              color: selected ? tc.text : tc.muted,
+            ),
+          ),
+        ],
+      ),
+    );
+    return onTap == null ? chip : TapScale(onTap: onTap!, child: chip);
+  }
 }

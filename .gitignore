@@ -16,3 +16,6 @@ app/.dart_tool/
 # IDE
 *.iml
 .idea/
+
+# Local reference material (images, prompts)
+Aggiornamento Taime/

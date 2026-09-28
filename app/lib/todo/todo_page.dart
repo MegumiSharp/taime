@@ -11,11 +11,20 @@ import '../theme.dart';
 import '../ui/motion.dart';
 import '../ui/swatches.dart';
 import '../ui/widgets.dart';
+import 'notes.dart';
 import 'parser.dart';
 import 'recurrence.dart';
 import 'todo_sync.dart';
 
-enum TodoView { oggi, prossimi, tutti }
+/// The two halves of the Liste tab.
+enum ListsView { todo, note }
+
+/// Which half is showing; notifications can switch it (a note reminder opens
+/// the notes).
+final listsView = ValueNotifier<ListsView>(ListsView.todo);
+
+const _horizonIcons = [Icons.wb_sunny_rounded, Icons.view_week_rounded, Icons.hourglass_empty_rounded];
+const _horizonShort = ['Oggi', 'Settimana', 'Più avanti'];
 
 Color priorityColor(BuildContext context, int p) {
   final tc = context.tc;
@@ -31,7 +40,7 @@ String dueLabel(DateTime due, bool hasTime) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   final d = DateTime(due.year, due.month, due.day);
-  final diff = d.difference(today).inDays;
+  final diff = (d.difference(today).inHours / 24).round();
   final day = switch (diff) {
     0 => 'Oggi',
     1 => 'Domani',
@@ -44,6 +53,38 @@ String dueLabel(DateTime due, bool hasTime) {
 
 String _cap(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
+/// Title, the To-do | Note switch and a trailing control.
+class ListsHeader extends StatelessWidget {
+  const ListsHeader({super.key, required this.view, this.trailing});
+  final ListsView view;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(view == ListsView.todo ? 'To-do' : 'Note', style: Theme.of(context).textTheme.headlineMedium),
+            ),
+            ?trailing,
+          ],
+        ),
+        const SizedBox(height: 14),
+        PillSelector<ListsView>(
+          values: ListsView.values,
+          labels: const ['To-do', 'Note'],
+          selected: view,
+          onChanged: (v) => listsView.value = v,
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+}
+
 class TodoPage extends StatefulWidget {
   const TodoPage({super.key, required this.settings});
   final Settings settings;
@@ -53,83 +94,79 @@ class TodoPage extends StatefulWidget {
 }
 
 class _TodoPageState extends State<TodoPage> {
-  TodoView _view = TodoView.oggi;
   int? _category; // null = all
   bool _showDone = false;
+  final Set<int> _collapsed = {};
 
   @override
   Widget build(BuildContext context) {
-    final tc = context.tc;
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 78),
-        child: FloatingActionButton.extended(
-          onPressed: () => showQuickAdd(context, categoryId: _category),
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Nuovo'),
+    return ValueListenableBuilder<ListsView>(
+      valueListenable: listsView,
+      builder: (context, view, _) => Scaffold(
+        backgroundColor: Colors.transparent,
+        floatingActionButton: Padding(
+          padding: const EdgeInsets.only(bottom: 78),
+          child: FloatingActionButton.extended(
+            heroTag: 'lists-fab',
+            onPressed: () =>
+                view == ListsView.todo ? showNewTodo(context, categoryId: _category) : openNote(context, null),
+            icon: const Icon(Icons.add_rounded),
+            label: Text(view == ListsView.todo ? 'To-do' : 'Nota'),
+          ),
         ),
-      ),
-      body: PastelBackground(
-        child: SafeArea(
-          bottom: false,
-          child: StreamBuilder<List<TodoCategory>>(
-            stream: db.watchTodoCategories(),
-            builder: (context, cSnap) {
-              final cats = cSnap.data ?? const <TodoCategory>[];
-              return StreamBuilder<List<Todo>>(
-                stream: db.watchTodos(),
-                builder: (context, snap) {
-                  final all = snap.data ?? const <Todo>[];
-                  return _list(context, tc, all, cats);
-                },
-              );
-            },
+        body: PastelBackground(
+          child: SafeArea(
+            bottom: false,
+            child: AnimatedSwitcher(
+              duration: Motion.of(context, Motion.medium),
+              child: view == ListsView.note
+                  ? const NotesList(key: ValueKey('notes'))
+                  : KeyedSubtree(key: const ValueKey('todos'), child: _todos(context)),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _list(BuildContext context, TaimeColors tc, List<Todo> all, List<TodoCategory> cats) {
+  Widget _todos(BuildContext context) {
+    return StreamBuilder<List<TodoCategory>>(
+      stream: db.watchTodoCategories(),
+      builder: (context, cSnap) {
+        final cats = cSnap.data ?? const <TodoCategory>[];
+        return StreamBuilder<List<Todo>>(
+          stream: db.watchTodos(),
+          builder: (context, snap) => _list(context, snap.data ?? const <Todo>[], cats),
+        );
+      },
+    );
+  }
+
+  Widget _list(BuildContext context, List<Todo> all, List<TodoCategory> cats) {
+    final tc = context.tc;
     final byParent = <int, List<Todo>>{};
     for (final t in all) {
       if (t.parentId != null) byParent.putIfAbsent(t.parentId!, () => []).add(t);
     }
     final catById = {for (final c in cats) c.id: c};
     final top = all.where((t) => t.parentId == null && (_category == null || t.categoryId == _category)).toList();
-    final open = top.where((t) => t.completedAt == null).toList();
+    final now = DateTime.now();
+    final sections = [<Todo>[], <Todo>[], <Todo>[]];
+    for (final t in top.where((t) => t.completedAt == null)) {
+      sections[sectionOf(t, now)].add(t);
+    }
+    int order(Todo a, Todo b) {
+      final c = (a.due ?? DateTime(9999)).compareTo(b.due ?? DateTime(9999));
+      if (c != 0) return c;
+      final p = a.priority.compareTo(b.priority);
+      return p != 0 ? p : a.id.compareTo(b.id);
+    }
+
+    for (final s in sections) {
+      s.sort(order);
+    }
     final done = top.where((t) => t.completedAt != null).toList()
       ..sort((a, b) => b.completedAt!.compareTo(a.completedAt!));
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    int byTime(Todo a, Todo b) {
-      final c = (a.due ?? DateTime(9999)).compareTo(b.due ?? DateTime(9999));
-      return c != 0 ? c : a.priority.compareTo(b.priority);
-    }
-
-    final sections = <(String, List<Todo>, bool)>[];
-    switch (_view) {
-      case TodoView.oggi:
-        final overdue = open.where((t) => t.due != null && t.due!.isBefore(today)).toList()..sort(byTime);
-        final todays = open
-            .where((t) => t.due != null && !t.due!.isBefore(today) && t.due!.isBefore(today.add(const Duration(days: 1))))
-            .toList()
-          ..sort(byTime);
-        if (overdue.isNotEmpty) sections.add(('Scaduti', overdue, true));
-        sections.add(('Oggi', todays, false));
-      case TodoView.prossimi:
-        for (var i = 0; i < 7; i++) {
-          final d = DateTime(today.year, today.month, today.day + i);
-          final next = DateTime(d.year, d.month, d.day + 1);
-          final items = open.where((t) => t.due != null && !t.due!.isBefore(d) && t.due!.isBefore(next)).toList()
-            ..sort(byTime);
-          if (items.isNotEmpty || i < 2) sections.add((dueLabel(d, false), items, false));
-        }
-      case TodoView.tutti:
-        sections.add(('', open, false));
-    }
 
     Widget tile(Todo t) => _TodoTile(
       key: ValueKey(t.id),
@@ -142,126 +179,157 @@ class _TodoPageState extends State<TodoPage> {
       slivers: [
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          sliver: SliverList.list(
-            children: [
-              Row(
-                children: [
-                  Expanded(child: Text('To-do', style: Theme.of(context).textTheme.headlineMedium)),
-                  _CategoryMenu(
-                    categories: cats,
-                    selected: _category,
-                    onChanged: (c) => setState(() => _category = c),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              PillSelector<TodoView>(
-                values: TodoView.values,
-                labels: const ['Oggi', 'Prossimi 7 giorni', 'Tutti'],
-                selected: _view,
-                onChanged: (v) => setState(() => _view = v),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        ),
-        if (_view == TodoView.tutti)
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            sliver: open.isEmpty
-                ? SliverToBoxAdapter(child: _empty(context))
-                : SliverReorderableList(
-                    itemCount: open.length,
-                    onReorderItem: (a, b) => _reorder(open, a, b),
-                    proxyDecorator: (child, _, _) => Material(color: Colors.transparent, child: child),
-                    itemBuilder: (context, i) => ReorderableDelayedDragStartListener(
-                      key: ValueKey(open[i].id),
-                      index: i,
-                      child: tile(open[i]),
-                    ),
-                  ),
-          )
-        else
-          for (final (title, items, late) in sections)
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              sliver: SliverList.list(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
-                    child: Row(
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: late ? tc.pause : tc.text,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (items.isNotEmpty)
-                          Text('${items.length}', style: TextStyle(color: tc.muted, fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                  ),
-                  if (items.isEmpty && title == 'Oggi')
-                    _empty(context)
-                  else if (items.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4, bottom: 6),
-                      child: Text('Niente in programma', style: TextStyle(color: tc.muted, fontSize: 13)),
-                    ),
-                  for (var i = 0; i < items.length; i++) StaggeredIn(index: i, child: tile(items[i])),
-                ],
+          sliver: SliverToBoxAdapter(
+            child: ListsHeader(
+              view: ListsView.todo,
+              trailing: _CategoryMenu(
+                categories: cats,
+                selected: _category,
+                onChanged: (c) => setState(() => _category = c),
               ),
             ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          sliver: SliverToBoxAdapter(
-            child: done.isEmpty
-                ? const SizedBox.shrink()
-                : TapScale(
-                    onTap: () => setState(() => _showDone = !_showDone),
-                    child: Row(
-                      children: [
-                        AnimatedRotation(
-                          turns: _showDone ? 0.25 : 0,
-                          duration: Motion.of(context, Motion.medium),
-                          child: Icon(Icons.chevron_right_rounded, color: tc.muted),
-                        ),
-                        Text('Completati (${done.length})',
-                            style: TextStyle(color: tc.muted, fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                  ),
           ),
         ),
-        if (_showDone)
+        for (var i = 0; i < 3; i++)
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             sliver: SliverList.list(
-              children: [for (final t in done.take(40)) tile(t)],
+              children: [
+                _SectionHeader(
+                  title: kHorizonNames[i],
+                  icon: _horizonIcons[i],
+                  count: sections[i].length,
+                  collapsed: _collapsed.contains(i),
+                  onToggle: () => setState(() => _collapsed.contains(i) ? _collapsed.remove(i) : _collapsed.add(i)),
+                  onAdd: () => showNewTodo(context, categoryId: _category, horizon: i),
+                ),
+                if (!_collapsed.contains(i)) ...[
+                  if (sections[i].isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+                      child: Text(
+                        i == 0 ? 'Niente per oggi. Tocca + per aggiungere qualcosa.' : 'Niente qui.',
+                        style: TextStyle(color: tc.muted, fontSize: 13),
+                      ),
+                    ),
+                  for (var k = 0; k < sections[i].length; k++) StaggeredIn(index: k, child: tile(sections[i][k])),
+                ],
+              ],
             ),
+          ),
+        if (done.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TapScale(
+                      onTap: () => setState(() => _showDone = !_showDone),
+                      child: Row(
+                        children: [
+                          AnimatedRotation(
+                            turns: _showDone ? 0.25 : 0,
+                            duration: Motion.of(context, Motion.medium),
+                            child: Icon(Icons.chevron_right_rounded, color: tc.muted),
+                          ),
+                          Text(
+                            'Completati (${done.length})',
+                            style: TextStyle(color: tc.muted, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      Haptic.medium();
+                      final undo = await clearCompleted(done);
+                      showUndo(
+                        messenger,
+                        done.length == 1 ? 'Eliminato 1 completato' : 'Eliminati ${done.length} completati',
+                        undo,
+                      );
+                    },
+                    style: TextButton.styleFrom(foregroundColor: tc.muted),
+                    icon: const Icon(Icons.delete_sweep_rounded, size: 19),
+                    label: const Text('Svuota'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (_showDone)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            sliver: SliverList.list(children: [for (final t in done.take(60)) tile(t)]),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 170)),
       ],
     );
   }
+}
 
-  Widget _empty(BuildContext context) => const EmptyState(
-    title: 'Tutto fatto',
-    subtitle: 'Tocca "Nuovo" e scrivi, per esempio:\n"chiamare Anna domani alle 18 #personale"',
-  );
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    required this.icon,
+    required this.count,
+    required this.collapsed,
+    required this.onToggle,
+    required this.onAdd,
+  });
 
-  Future<void> _reorder(List<Todo> list, int from, int to) async {
-    final moved = [...list];
-    final item = moved.removeAt(from);
-    moved.insert(to, item);
-    await db.batch((b) {
-      for (var i = 0; i < moved.length; i++) {
-        b.update(db.todos, TodosCompanion(sort: Value(i)), where: (t) => t.id.equals(moved[i].id));
-      }
-    });
+  final String title;
+  final IconData icon;
+  final int count;
+  final bool collapsed;
+  final VoidCallback onToggle, onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final tc = context.tc;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: TapScale(
+              onTap: onToggle,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                child: Row(
+                  children: [
+                    Icon(icon, size: 18, color: tc.accent),
+                    const SizedBox(width: 8),
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5)),
+                    const SizedBox(width: 8),
+                    if (count > 0)
+                      Text(
+                        '$count',
+                        style: TextStyle(color: tc.muted, fontWeight: FontWeight.w700),
+                      ),
+                    const SizedBox(width: 2),
+                    AnimatedRotation(
+                      turns: collapsed ? -0.25 : 0,
+                      duration: Motion.of(context, Motion.medium),
+                      child: Icon(Icons.expand_more_rounded, size: 20, color: tc.muted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Aggiungi in $title',
+            onPressed: onAdd,
+            icon: Icon(Icons.add_rounded, color: tc.muted, size: 22),
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -303,10 +371,7 @@ class _CategoryMenu extends StatelessWidget {
       ],
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-        decoration: BoxDecoration(
-          color: tc.surface.withValues(alpha: 0.85),
-          borderRadius: BorderRadius.circular(22),
-        ),
+        decoration: BoxDecoration(color: tc.surface.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(22)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -360,12 +425,24 @@ class _TodoTileState extends State<_TodoTile> {
     await Future<void>.delayed(Motion.of(context, const Duration(milliseconds: 420)));
     final undo = await completeTodo(t);
     if (!mounted) return;
-    showUndo(ScaffoldMessenger.of(context), t.recurrence != null ? 'Fatto! Il prossimo è già in lista' : 'Fatto!', undo);
+    showUndo(
+      ScaffoldMessenger.of(context),
+      t.recurrence != null ? 'Fatto! Il prossimo è già in lista' : 'Fatto!',
+      undo,
+    );
+  }
+
+  Future<void> _delete() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final undo = await deleteTodo(widget.todo);
+    showUndo(messenger, 'Eliminato', undo);
   }
 
   Future<bool> _swipeLeft() async {
     final t = widget.todo;
     final messenger = ScaffoldMessenger.of(context);
+    final now = DateTime.now();
+    final current = sectionOf(t, now);
     final choice = await showSoftSheet<String>(
       context,
       scrollControlled: false,
@@ -375,14 +452,29 @@ class _TodoTileState extends State<_TodoTile> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                leading: const Icon(Icons.wb_sunny_rounded),
-                title: const Text('Rinvia a domani'),
-                onTap: () => Navigator.pop(context, 'tomorrow'),
-              ),
+              if (t.due == null)
+                for (var i = 0; i < 3; i++)
+                  if (i != current)
+                    ListTile(
+                      leading: Icon(_horizonIcons[i]),
+                      title: Text('Sposta in ${kHorizonNames[i]}'),
+                      onTap: () => Navigator.pop(context, 'h$i'),
+                    ),
+              if (t.due != null) ...[
+                ListTile(
+                  leading: const Icon(Icons.wb_sunny_rounded),
+                  title: const Text('Rinvia a domani'),
+                  onTap: () => Navigator.pop(context, 'tomorrow'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.event_busy_rounded),
+                  title: const Text('Togli la data'),
+                  onTap: () => Navigator.pop(context, 'nodate'),
+                ),
+              ],
               ListTile(
                 leading: const Icon(Icons.event_rounded),
-                title: const Text('Scegli una data'),
+                title: Text(t.due == null ? 'Dai una data' : 'Scegli un\'altra data'),
                 onTap: () => Navigator.pop(context, 'pick'),
               ),
               ListTile(
@@ -396,12 +488,41 @@ class _TodoTileState extends State<_TodoTile> {
       ),
     );
     if (!mounted || choice == null) return false;
-    final now = DateTime.now();
     Future<void> Function()? undo;
     String? msg;
-    if (choice == 'tomorrow') {
+    if (choice.startsWith('h')) {
+      final h = int.parse(choice.substring(1));
+      final old = t.horizon;
+      await updateTodo(t.id, TodosCompanion(horizon: Value(h)));
+      undo = () => updateTodo(t.id, TodosCompanion(horizon: Value(old)));
+      msg = 'Spostato in ${kHorizonNames[h]}';
+    } else if (choice == 'tomorrow') {
       undo = await postponeTodo(t, DateTime(now.year, now.month, now.day + 1));
       msg = 'Rinviato a domani';
+    } else if (choice == 'nodate') {
+      final old = t;
+      // Stays where it was: the horizon follows the section it was in.
+      await updateTodo(
+        t.id,
+        TodosCompanion(
+          due: const Value(null),
+          hasTime: const Value(false),
+          remindBefore: const Value(null),
+          recurrence: const Value(null),
+          horizon: Value(current),
+        ),
+      );
+      undo = () => updateTodo(
+        t.id,
+        TodosCompanion(
+          due: Value(old.due),
+          hasTime: Value(old.hasTime),
+          remindBefore: Value(old.remindBefore),
+          recurrence: Value(old.recurrence),
+          horizon: Value(old.horizon),
+        ),
+      );
+      msg = 'Data tolta';
     } else if (choice == 'pick') {
       final d = await showDatePicker(
         context: context,
@@ -411,14 +532,12 @@ class _TodoTileState extends State<_TodoTile> {
       );
       if (d == null) return false;
       undo = await postponeTodo(t, d);
-      msg = 'Rinviato a ${DateFormat('d MMM', 'it').format(d)}';
+      msg = 'Spostato a ${DateFormat('d MMM', 'it').format(d)}';
     } else if (choice == 'delete') {
       undo = await deleteTodo(t);
       msg = 'Eliminato';
     }
-    if (undo != null) {
-      showUndo(messenger, msg!, undo);
-    }
+    if (undo != null) showUndo(messenger, msg!, undo);
     return false;
   }
 
@@ -426,26 +545,35 @@ class _TodoTileState extends State<_TodoTile> {
   Widget build(BuildContext context) {
     final tc = context.tc;
     final t = widget.todo;
-    final done = t.completedAt != null || _checking;
+    final completed = t.completedAt != null;
+    final done = completed || _checking;
     final pc = priorityColor(context, t.priority);
     final now = DateTime.now();
-    final overdue = t.due != null && t.completedAt == null && t.due!.isBefore(DateTime(now.year, now.month, now.day));
+    final overdue = t.due != null && !completed && t.due!.isBefore(DateTime(now.year, now.month, now.day));
     final subsDone = widget.subtasks.where((s) => s.completedAt != null).length;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Dismissible(
         key: ValueKey('d${t.id}'),
-        direction: t.completedAt == null ? DismissDirection.horizontal : DismissDirection.none,
+        direction: DismissDirection.horizontal,
         confirmDismiss: (dir) async {
+          if (completed) {
+            await _delete();
+            return false;
+          }
           if (dir == DismissDirection.startToEnd) {
             await _toggle();
             return false;
           }
           return _swipeLeft();
         },
-        background: _SwipeBg(color: tc.accent, icon: Icons.check_rounded, left: true),
-        secondaryBackground: _SwipeBg(color: tc.pause, icon: Icons.schedule_rounded, left: false),
+        background: completed
+            ? _SwipeBg(color: tc.danger, icon: Icons.delete_outline_rounded, left: true)
+            : _SwipeBg(color: tc.accent, icon: Icons.check_rounded, left: true),
+        secondaryBackground: completed
+            ? _SwipeBg(color: tc.danger, icon: Icons.delete_outline_rounded, left: false)
+            : _SwipeBg(color: tc.pause, icon: Icons.schedule_rounded, left: false),
         child: SoftCard(
           padding: const EdgeInsets.fromLTRB(8, 10, 14, 10),
           onTap: () => showTodoDetail(context, t.id),
@@ -498,10 +626,17 @@ class _TodoTileState extends State<_TodoTile> {
                         if (t.notes.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 2),
-                            child: Text(t.notes, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: tc.muted, fontSize: 13)),
+                            child: Text(
+                              t.notes,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: tc.muted, fontSize: 13),
+                            ),
                           ),
-                        if (t.due != null || widget.category != null || widget.subtasks.isNotEmpty || t.recurrence != null)
+                        if (t.due != null ||
+                            widget.category != null ||
+                            widget.subtasks.isNotEmpty ||
+                            t.recurrence != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Wrap(
@@ -516,7 +651,11 @@ class _TodoTileState extends State<_TodoTile> {
                                     color: overdue ? tc.pause : tc.accent,
                                   ),
                                 if (t.recurrence != null)
-                                  _Meta(icon: Icons.repeat_rounded, text: recurrenceLabel(t.recurrence!), color: tc.muted),
+                                  _Meta(
+                                    icon: Icons.repeat_rounded,
+                                    text: recurrenceLabel(t.recurrence!),
+                                    color: tc.muted,
+                                  ),
                                 if (t.remindBefore != null)
                                   _Meta(icon: Icons.notifications_active_rounded, text: '', color: tc.muted),
                                 if (widget.subtasks.isNotEmpty)
@@ -531,8 +670,10 @@ class _TodoTileState extends State<_TodoTile> {
                                     children: [
                                       _Dot(color: activityColor(widget.category!.color, dark: tc.dark), size: 8),
                                       const SizedBox(width: 4),
-                                      Text(widget.category!.name,
-                                          style: TextStyle(color: tc.muted, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                      Text(
+                                        widget.category!.name,
+                                        style: TextStyle(color: tc.muted, fontSize: 12.5, fontWeight: FontWeight.w600),
+                                      ),
                                     ],
                                   ),
                               ],
@@ -564,7 +705,10 @@ class _Meta extends StatelessWidget {
       Icon(icon, size: 14, color: color),
       if (text.isNotEmpty) ...[
         const SizedBox(width: 3),
-        Text(text, style: TextStyle(color: color, fontSize: 12.5, fontWeight: FontWeight.w700)),
+        Text(
+          text,
+          style: TextStyle(color: color, fontSize: 12.5, fontWeight: FontWeight.w700),
+        ),
       ],
     ],
   );
@@ -580,15 +724,12 @@ class _SwipeBg extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     alignment: left ? Alignment.centerLeft : Alignment.centerRight,
     padding: const EdgeInsets.symmetric(horizontal: 24),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.25),
-      borderRadius: BorderRadius.circular(kRadius),
-    ),
+    decoration: BoxDecoration(color: color.withValues(alpha: 0.25), borderRadius: BorderRadius.circular(kRadius)),
     child: Icon(icon, color: color),
   );
 }
 
-// --- Quick add -------------------------------------------------------------------
+// --- New to-do: a small dialog ----------------------------------------------------
 
 /// Colours the parts of the text the parser understood, while typing.
 class _HighlightController extends TextEditingController {
@@ -598,16 +739,20 @@ class _HighlightController extends TextEditingController {
 
   @override
   TextSpan buildTextSpan({required BuildContext context, TextStyle? style, required bool withComposing}) {
-    if (tokens.isEmpty || text.isEmpty) return super.buildTextSpan(context: context, style: style, withComposing: withComposing);
+    if (tokens.isEmpty || text.isEmpty) {
+      return super.buildTextSpan(context: context, style: style, withComposing: withComposing);
+    }
     final spans = <TextSpan>[];
     var i = 0;
     for (final t in tokens) {
       if (t.start < i || t.end > text.length) continue;
       if (t.start > i) spans.add(TextSpan(text: text.substring(i, t.start)));
-      spans.add(TextSpan(
-        text: text.substring(t.start, t.end),
-        style: TextStyle(backgroundColor: highlight, color: highlightText, fontWeight: FontWeight.w800),
-      ));
+      spans.add(
+        TextSpan(
+          text: text.substring(t.start, t.end),
+          style: TextStyle(backgroundColor: highlight, color: highlightText, fontWeight: FontWeight.w800),
+        ),
+      );
       i = t.end;
     }
     if (i < text.length) spans.add(TextSpan(text: text.substring(i)));
@@ -615,34 +760,52 @@ class _HighlightController extends TextEditingController {
   }
 }
 
-Future<void> showQuickAdd(BuildContext context, {int? categoryId}) {
-  return showSoftSheet<void>(context, builder: (_) => _QuickAdd(categoryId: categoryId));
+/// A compact dialog: what, when (Oggi / Settimana / Più avanti or a date),
+/// and a few one-tap extras.
+Future<void> showNewTodo(BuildContext context, {int? categoryId, int horizon = 0}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final where = await showDialog<String>(
+    context: context,
+    builder: (_) => _NewTodo(categoryId: categoryId, horizon: horizon),
+  );
+  if (where != null) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('Aggiunto in $where'), duration: const Duration(seconds: 2)));
+  }
 }
 
-class _QuickAdd extends StatefulWidget {
-  const _QuickAdd({this.categoryId});
+class _NewTodo extends StatefulWidget {
+  const _NewTodo({this.categoryId, required this.horizon});
   final int? categoryId;
+  final int horizon;
 
   @override
-  State<_QuickAdd> createState() => _QuickAddState();
+  State<_NewTodo> createState() => _NewTodoState();
 }
 
-class _QuickAddState extends State<_QuickAdd> {
+class _NewTodoState extends State<_NewTodo> {
   final _c = _HighlightController();
-  final _focus = FocusNode();
   final Set<String> _ignored = {};
   ParsedTask _parsed = parseTask('', DateTime.now());
-  DateTime? _pickedDate;
-  int? _pickedPriority;
-  int? _pickedCategory;
+  late int _horizon = widget.horizon;
+  DateTime? _date;
+  TimeOfDay? _time;
+  String? _recurrence;
   int? _remind;
-  int _added = 0;
+  int _priority = 4;
+  late int? _category = widget.categoryId;
 
   @override
   void initState() {
     super.initState();
-    _pickedCategory = widget.categoryId;
     _c.addListener(_reparse);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
   }
 
   void _reparse() {
@@ -651,42 +814,73 @@ class _QuickAddState extends State<_QuickAdd> {
     setState(() => _parsed = p);
   }
 
-  @override
-  void dispose() {
-    _c.dispose();
-    _focus.dispose();
-    super.dispose();
+  /// Drops what the parser read for [kind], so a tap on a chip wins.
+  void _forget(TokenKind kind) {
+    for (final t in _parsed.tokens.where((t) => t.kind == kind)) {
+      _ignored.add(t.key);
+    }
+    _reparse();
+  }
+
+  DateTime? get _day => _parsed.date ?? _date;
+  TimeOfDay? get _clock => _parsed.hasTime ? TimeOfDay(hour: _parsed.hour!, minute: _parsed.minute ?? 0) : _time;
+  String? get _rule => _parsed.recurrence ?? _recurrence;
+  int get _prio => _parsed.priority ?? _priority;
+
+  /// The due moment, filling in "today" when a time, repeat or reminder needs one.
+  DateTime? _due() {
+    var day = _day;
+    final now = DateTime.now();
+    if (day == null && _rule != null) day = firstOccurrence(now, _rule!);
+    if (day == null && (_clock != null || _remind != null)) day = now;
+    if (day == null) return null;
+    final c = _clock;
+    return DateTime(day.year, day.month, day.day, c?.hour ?? 0, c?.minute ?? 0);
   }
 
   Future<void> _submit() async {
-    final p = _parsed;
-    if (p.title.isEmpty) return;
-    int? cat = _pickedCategory;
-    if (p.category != null) cat = await categoryIdFor(p.category!);
-    final due = p.due ?? _pickedDate;
-    await addTodo(
-      TodosCompanion.insert(
-        title: p.title,
-        categoryId: Value(cat),
-        due: Value(due),
-        hasTime: Value(p.hasTime),
-        priority: Value(p.priority ?? _pickedPriority ?? 4),
-        recurrence: Value(p.recurrence),
-        remindBefore: Value(due == null ? null : _remind),
-        sort: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
-        createdAt: DateTime.now(),
-      ),
+    final title = _parsed.title.trim();
+    if (title.isEmpty) return;
+    final nav = Navigator.of(context);
+    int? cat = _category;
+    if (_parsed.category != null) cat = await categoryIdFor(_parsed.category!);
+    final due = _due();
+    final now = DateTime.now();
+    final t = TodosCompanion.insert(
+      title: title,
+      categoryId: Value(cat),
+      due: Value(due),
+      hasTime: Value(_clock != null),
+      priority: Value(_prio),
+      recurrence: Value(_rule),
+      remindBefore: Value(due == null ? null : _remind),
+      sort: Value(now.millisecondsSinceEpoch ~/ 1000),
+      createdAt: now,
+      horizon: Value(_horizon),
     );
+    await addTodo(t);
     Haptic.light();
-    _ignored.clear();
-    _c.clear();
-    setState(() {
-      _added++;
-      _pickedDate = null;
-      _pickedPriority = null;
-      _remind = null;
-    });
-    _focus.requestFocus();
+    nav.pop(kHorizonNames[sectionFor(due, _horizon, now)]);
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _day ?? now,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 5),
+    );
+    if (d == null) return;
+    _forget(TokenKind.date);
+    setState(() => _date = d);
+  }
+
+  Future<void> _pickTime() async {
+    final t = await showTimePicker(context: context, initialTime: _clock ?? const TimeOfDay(hour: 9, minute: 0));
+    if (t == null) return;
+    _forget(TokenKind.time);
+    setState(() => _time = t);
   }
 
   @override
@@ -694,120 +888,202 @@ class _QuickAddState extends State<_QuickAdd> {
     final tc = context.tc;
     _c.highlight = tc.accentSoft;
     _c.highlightText = tc.dark ? tc.text : Color.lerp(tc.accent, Colors.black, 0.2)!;
-    final p = _parsed;
-    final due = p.due ?? _pickedDate;
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+    final day = _day;
+    final clock = _clock;
+    final label = TextStyle(color: tc.muted, fontWeight: FontWeight.w700, fontSize: 12.5);
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Text('Nuovo to-do', style: Theme.of(context).textTheme.titleLarge),
-                const Spacer(),
-                AnimatedSwitcher(
-                  duration: Motion.of(context, Motion.medium),
-                  child: _added == 0
-                      ? const SizedBox.shrink()
-                      : Text('$_added aggiunti', key: ValueKey(_added),
-                          style: TextStyle(color: tc.accent, fontWeight: FontWeight.w700)),
+                Expanded(child: Text('Nuovo to-do', style: Theme.of(context).textTheme.titleLarge)),
+                IconButton(
+                  tooltip: 'Chiudi',
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Icons.close_rounded, color: tc.muted),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
             TextField(
               controller: _c,
-              focusNode: _focus,
               autofocus: true,
+              minLines: 1,
+              maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
-              textInputAction: TextInputAction.send,
+              textInputAction: TextInputAction.done,
               onSubmitted: (_) => _submit(),
-              decoration: InputDecoration(
-                hintText: 'es. studiare fisica domani alle 15 #studio !1',
-                suffixIcon: IconButton(
-                  onPressed: _submit,
-                  icon: Icon(Icons.arrow_upward_rounded, color: tc.accent),
-                ),
-              ),
+              decoration: const InputDecoration(hintText: 'Cosa devi fare?'),
             ),
-            const SizedBox(height: 10),
-            // What was understood; tap to undo a recognition.
+            if (_parsed.tokens.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('Ho capito: tocca per annullare', style: label),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final t in _parsed.tokens)
+                    SoftChip(
+                      label: _tokenLabel(t, _parsed),
+                      icon: Icons.close_rounded,
+                      selected: true,
+                      onTap: () {
+                        _ignored.add(t.key);
+                        _reparse();
+                      },
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            Text('Quando', style: label),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final t in p.tokens)
-                  InputChip(
-                    label: Text(_tokenLabel(t, p)),
-                    avatar: Icon(_tokenIcon(t.kind), size: 16),
-                    onDeleted: () {
-                      _ignored.add(t.key);
-                      _reparse();
+                for (var i = 0; i < 3; i++)
+                  SoftChip(
+                    label: _horizonShort[i],
+                    icon: _horizonIcons[i],
+                    selected: day == null && _rule == null && _horizon == i,
+                    onTap: () {
+                      _forget(TokenKind.date);
+                      _forget(TokenKind.recurrence);
+                      setState(() {
+                        _horizon = i;
+                        _date = null;
+                        _recurrence = null;
+                      });
                     },
-                    deleteIcon: const Icon(Icons.close_rounded, size: 16),
-                    shape: const StadiumBorder(),
+                  ),
+                SoftChip(
+                  label: day == null ? 'Data' : dueLabel(day, false),
+                  icon: Icons.event_rounded,
+                  selected: day != null,
+                  onTap: _pickDate,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text('Extra', style: label),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SoftChip(
+                  label: clock == null ? 'Ora' : clock.format(context),
+                  icon: Icons.schedule_rounded,
+                  selected: clock != null,
+                  onTap: _pickTime,
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Ripeti',
+                  onSelected: (v) {
+                    _forget(TokenKind.recurrence);
+                    setState(() => _recurrence = v.isEmpty ? null : v);
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: '', child: Text('Non si ripete')),
+                    for (final e in kRecurrenceChoices.entries) PopupMenuItem(value: e.key, child: Text(e.value)),
+                  ],
+                  child: SoftChip(
+                    label: _rule == null ? 'Ripeti' : recurrenceLabel(_rule!),
+                    icon: Icons.repeat_rounded,
+                    selected: _rule != null,
+                  ),
+                ),
+                PopupMenuButton<int>(
+                  tooltip: 'Promemoria',
+                  onSelected: (v) => setState(() => _remind = v < 0 ? null : v),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: -1, child: Text('Nessun promemoria')),
+                    PopupMenuItem(value: 0, child: Text('All\'ora (o alle 9 del giorno)')),
+                    PopupMenuItem(value: 15, child: Text('15 minuti prima')),
+                    PopupMenuItem(value: 60, child: Text('1 ora prima')),
+                  ],
+                  child: SoftChip(
+                    label: _remind == null ? 'Promemoria' : (_remind == 0 ? 'All\'ora' : '$_remind min prima'),
+                    icon: Icons.notifications_rounded,
+                    selected: _remind != null,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Text('Priorità', style: label),
+                const SizedBox(width: 10),
+                for (var p = 1; p <= 4; p++)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      _forget(TokenKind.priority);
+                      setState(() => _priority = p);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: AnimatedContainer(
+                        duration: Motion.of(context, Motion.fast),
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _prio == p
+                              ? priorityColor(context, p)
+                              : priorityColor(context, p).withValues(alpha: 0.15),
+                          border: Border.all(color: priorityColor(context, p), width: 2),
+                        ),
+                        child: _prio == p ? Icon(Icons.check_rounded, size: 14, color: tc.surface) : null,
+                      ),
+                    ),
                   ),
               ],
             ),
-            if (p.tokens.isNotEmpty) const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _QuickChip(
-                    icon: Icons.event_rounded,
-                    label: due == null ? 'Data' : dueLabel(due, p.hasTime),
-                    active: due != null,
-                    onTap: () async {
-                      final now = DateTime.now();
-                      final d = await showDatePicker(
-                        context: context,
-                        initialDate: due ?? now,
-                        firstDate: DateTime(now.year - 1),
-                        lastDate: DateTime(now.year + 5),
-                      );
-                      if (d != null) setState(() => _pickedDate = d);
-                    },
-                  ),
-                  _QuickChip(
-                    icon: Icons.flag_rounded,
-                    label: 'Priorità ${p.priority ?? _pickedPriority ?? 4}',
-                    active: (p.priority ?? _pickedPriority ?? 4) < 4,
-                    color: priorityColor(context, p.priority ?? _pickedPriority ?? 4),
-                    onTap: () => setState(() => _pickedPriority = ((_pickedPriority ?? 4) % 4) + 1),
-                  ),
-                  StreamBuilder<List<TodoCategory>>(
-                    stream: db.watchTodoCategories(),
-                    builder: (context, snap) {
-                      final cats = snap.data ?? const <TodoCategory>[];
-                      final cur = cats.where((c) => c.id == _pickedCategory).firstOrNull;
-                      return PopupMenuButton<int>(
-                        onSelected: (v) => setState(() => _pickedCategory = v == -1 ? null : v),
-                        itemBuilder: (_) => [
-                          const PopupMenuItem(value: -1, child: Text('Nessuna categoria')),
-                          for (final c in cats) PopupMenuItem(value: c.id, child: Text(c.name)),
-                        ],
-                        child: _QuickChip(
-                          icon: Icons.label_rounded,
-                          label: p.category ?? cur?.name ?? 'Categoria',
-                          active: p.category != null || cur != null,
+            const SizedBox(height: 10),
+            StreamBuilder<List<TodoCategory>>(
+              stream: db.watchTodoCategories(),
+              builder: (context, snap) {
+                final cats = snap.data ?? const <TodoCategory>[];
+                final parsedCat = _parsed.category;
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final c in [null, ...cats])
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: SoftChip(
+                            label: c?.name ?? 'Nessuna categoria',
+                            dot: c == null ? null : activityColor(c.color, dark: tc.dark),
+                            selected: parsedCat == null
+                                ? _category == c?.id
+                                : c?.name.toLowerCase() == parsedCat.toLowerCase(),
+                            onTap: () {
+                              _forget(TokenKind.category);
+                              setState(() => _category = c?.id);
+                            },
+                          ),
                         ),
-                      );
-                    },
+                    ],
                   ),
-                  _QuickChip(
-                    icon: Icons.notifications_rounded,
-                    label: _remind == null ? 'Promemoria' : (_remind == 0 ? 'All\'ora' : '$_remind min prima'),
-                    active: _remind != null,
-                    onTap: () => setState(() {
-                      const cycle = [null, 0, 15, 60];
-                      _remind = cycle[(cycle.indexOf(_remind) + 1) % cycle.length];
-                    }),
-                  ),
-                ],
-              ),
+                );
+              },
+            ),
+            const SizedBox(height: 18),
+            PillButton(
+              label: 'Aggiungi',
+              icon: Icons.add_rounded,
+              expand: true,
+              onTap: _parsed.title.trim().isEmpty ? null : _submit,
             ),
           ],
         ),
@@ -817,52 +1093,12 @@ class _QuickAddState extends State<_QuickAdd> {
 
   String _tokenLabel(ParsedToken t, ParsedTask p) => switch (t.kind) {
     TokenKind.date => p.date == null ? t.text : dueLabel(p.date!, false),
-    TokenKind.time => p.hour == null ? t.text : '${p.hour.toString().padLeft(2, '0')}:${(p.minute ?? 0).toString().padLeft(2, '0')}',
+    TokenKind.time =>
+      p.hour == null ? t.text : '${p.hour.toString().padLeft(2, '0')}:${(p.minute ?? 0).toString().padLeft(2, '0')}',
     TokenKind.recurrence => recurrenceLabel(p.recurrence ?? ''),
     TokenKind.priority => 'Priorità ${p.priority}',
     TokenKind.category => p.category ?? t.text,
   };
-
-  IconData _tokenIcon(TokenKind k) => switch (k) {
-    TokenKind.date => Icons.event_rounded,
-    TokenKind.time => Icons.schedule_rounded,
-    TokenKind.recurrence => Icons.repeat_rounded,
-    TokenKind.priority => Icons.flag_rounded,
-    TokenKind.category => Icons.label_rounded,
-  };
-}
-
-class _QuickChip extends StatelessWidget {
-  const _QuickChip({required this.icon, required this.label, this.onTap, this.active = false, this.color});
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-  final bool active;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final tc = context.tc;
-    final c = color ?? (active ? tc.accent : tc.muted);
-    final chip = AnimatedContainer(
-      duration: Motion.of(context, Motion.fast),
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: active ? tc.accentSoft : tc.raised,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: c),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: active ? tc.text : tc.muted)),
-        ],
-      ),
-    );
-    return onTap == null ? chip : TapScale(onTap: onTap!, child: chip);
-  }
 }
 
 // --- Detail ----------------------------------------------------------------------
@@ -923,6 +1159,26 @@ class _TodoDetailState extends State<_TodoDetail> {
                 onChanged: (v) => updateTodo(t.id, TodosCompanion(notes: Value(v))),
               ),
               const SizedBox(height: 14),
+              if (t.due == null) ...[
+                Text(
+                  'Quando',
+                  style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (var i = 0; i < 3; i++)
+                      SoftChip(
+                        label: _horizonShort[i],
+                        icon: _horizonIcons[i],
+                        selected: t.horizon == i,
+                        onTap: () => updateTodo(t.id, TodosCompanion(horizon: Value(i))),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
               _Field(
                 icon: Icons.event_rounded,
                 label: 'Scadenza',
@@ -951,7 +1207,16 @@ class _TodoDetailState extends State<_TodoDetail> {
                 },
                 onClear: t.due == null
                     ? null
-                    : () => updateTodo(t.id, const TodosCompanion(due: Value(null), hasTime: Value(false))),
+                    : () => updateTodo(
+                        t.id,
+                        TodosCompanion(
+                          due: const Value(null),
+                          hasTime: const Value(false),
+                          remindBefore: const Value(null),
+                          recurrence: const Value(null),
+                          horizon: Value(sectionOf(t, DateTime.now())),
+                        ),
+                      ),
               ),
               _Field(
                 icon: Icons.flag_rounded,
@@ -976,7 +1241,19 @@ class _TodoDetailState extends State<_TodoDetail> {
                 },
               ),
               PopupMenuButton<String>(
-                onSelected: (v) => updateTodo(t.id, TodosCompanion(recurrence: Value(v == '' ? null : v))),
+                onSelected: (v) {
+                  final rule = v == '' ? null : v;
+                  updateTodo(
+                    t.id,
+                    TodosCompanion(
+                      recurrence: Value(rule),
+                      // A repeat needs a first day.
+                      due: rule != null && t.due == null
+                          ? Value(firstOccurrence(DateTime.now(), rule))
+                          : const Value.absent(),
+                    ),
+                  );
+                },
                 itemBuilder: (_) => [
                   const PopupMenuItem(value: '', child: Text('Non si ripete')),
                   for (final e in kRecurrenceChoices.entries) PopupMenuItem(value: e.key, child: Text(e.value)),
@@ -1026,10 +1303,8 @@ class _TodoDetailState extends State<_TodoDetail> {
                     Checkbox(
                       value: s.completedAt != null,
                       shape: const CircleBorder(),
-                      onChanged: (v) => updateTodo(
-                        s.id,
-                        TodosCompanion(completedAt: Value(v == true ? DateTime.now() : null)),
-                      ),
+                      onChanged: (v) =>
+                          updateTodo(s.id, TodosCompanion(completedAt: Value(v == true ? DateTime.now() : null))),
                     ),
                     Expanded(
                       child: Text(
@@ -1048,17 +1323,22 @@ class _TodoDetailState extends State<_TodoDetail> {
                 ),
               TextField(
                 controller: _sub,
-                decoration: const InputDecoration(hintText: 'Aggiungi un sottotask', prefixIcon: Icon(Icons.add_rounded)),
+                decoration: const InputDecoration(
+                  hintText: 'Aggiungi un sottotask',
+                  prefixIcon: Icon(Icons.add_rounded),
+                ),
                 onSubmitted: (v) async {
                   if (v.trim().isEmpty) return;
-                  await db.into(db.todos).insert(
-                    TodosCompanion.insert(
-                      parentId: Value(t.id),
-                      title: v.trim(),
-                      createdAt: DateTime.now(),
-                      sort: Value(subs.length),
-                    ),
-                  );
+                  await db
+                      .into(db.todos)
+                      .insert(
+                        TodosCompanion.insert(
+                          parentId: Value(t.id),
+                          title: v.trim(),
+                          createdAt: DateTime.now(),
+                          sort: Value(subs.length),
+                        ),
+                      );
                   _sub.clear();
                 },
               ),
@@ -1131,7 +1411,10 @@ class _Field extends StatelessWidget {
         children: [
           Icon(icon, size: 20, color: iconColor ?? tc.muted),
           const SizedBox(width: 14),
-          Text(label, style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600),
+          ),
           const Spacer(),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
           if (onClear != null)
@@ -1177,8 +1460,9 @@ class _CategoryManager extends StatelessWidget {
                       onTap: () {
                         final i = activitySwatches.indexOf(c.color);
                         final next = activitySwatches[(i + 3) % activitySwatches.length];
-                        (db.update(db.todoCategories)..where((x) => x.id.equals(c.id)))
-                            .write(TodoCategoriesCompanion(color: Value(next)));
+                        (db.update(
+                          db.todoCategories,
+                        )..where((x) => x.id.equals(c.id))).write(TodoCategoriesCompanion(color: Value(next)));
                       },
                       child: _Dot(color: activityColor(c.color, dark: tc.dark), size: 22),
                     ),
@@ -1241,7 +1525,9 @@ class _CategoryManager extends StatelessWidget {
     if (c == null) {
       await categoryIdFor(name);
     } else {
-      await (db.update(db.todoCategories)..where((x) => x.id.equals(c.id))).write(TodoCategoriesCompanion(name: Value(name)));
+      await (db.update(
+        db.todoCategories,
+      )..where((x) => x.id.equals(c.id))).write(TodoCategoriesCompanion(name: Value(name)));
     }
   }
 }

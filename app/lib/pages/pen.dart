@@ -315,7 +315,9 @@ class _PenPainter extends CustomPainter {
     final tr = geo.top(c, 0);
     final bl = geo.top(0, r);
     final br = geo.top(c, r);
-    final h = geo.th * (front ? 0.42 : 0.62);
+    // Same height all around; the side corners belong to the back pass so
+    // no post is drawn twice.
+    final h = geo.th * 0.52;
     final edges = front ? [(bl, br, c), (tr, br, r)] : [(tl, tr, c), (tl, bl, r)];
     final rail = Paint()
       ..color = _woodLine
@@ -331,7 +333,7 @@ class _PenPainter extends CustomPainter {
         canvas.drawLine(a - Offset(0, y), b - Offset(0, y), rail);
         canvas.drawLine(a - Offset(0, y), b - Offset(0, y), railFill);
       }
-      for (var i = 0; i <= steps; i++) {
+      for (var i = front ? 1 : 0; i <= steps; i++) {
         final p = Offset.lerp(a, b, i / steps)!;
         final post = RRect.fromRectAndRadius(
           Rect.fromLTWH(p.dx - geo.tw * 0.035, p.dy - h, geo.tw * 0.07, h + geo.depth * 0.3),

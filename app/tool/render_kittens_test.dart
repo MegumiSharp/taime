@@ -38,8 +38,8 @@ void main() {
 
   test('render sheets', () async {
     await _sheet('all_skins', [
-      for (final s in kSkins.skip(32)) (skin: s, pose: s.pose, growth: 1.0, anim: KittenAnim()..t = 1.3),
-    ], cols: 5);
+      for (final s in kSkins) (skin: s, pose: s.pose, growth: 1.0, anim: KittenAnim()..t = 1.3),
+    ], cols: 8);
     KittenAnim act(KittenAction a, double p) => KittenAnim()
       ..action = a
       ..actionT = p
@@ -47,16 +47,26 @@ void main() {
     await _sheet('actions', [
       for (final (a, p) in const [
         (KittenAction.mosca, 0.3),
+        (KittenAction.bottiglia, 0.1),
+        (KittenAction.bottiglia, 0.3),
         (KittenAction.bottiglia, 0.4),
-        (KittenAction.bottiglia, 0.7),
+        (KittenAction.bottiglia, 0.6),
+        (KittenAction.bottiglia, 0.8),
         (KittenAction.sbadiglio, 0.5),
+        (KittenAction.farfalla, 0.15),
         (KittenAction.farfalla, 0.5),
-        (KittenAction.gomitolo, 0.45),
+        (KittenAction.gomitolo, 0.2),
+        (KittenAction.gomitolo, 0.42),
+        (KittenAction.gomitolo, 0.6),
         (KittenAction.starnuto, 0.5),
         (KittenAction.starnuto, 0.8),
       ])
         (skin: kSkins.first, pose: Pose.seduto, growth: 1.0, anim: act(a, p)),
-    ], cols: 4);
+    ], cols: 5);
+    await _sheet('detail', [
+      for (final id in const ['biscotto', 'brioche', 'nocciola', 'diavoletto', 'astronauta', 'zenzero', 'wendy', 'minou', 'panda'])
+        (skin: kSkinById[id]!, pose: kSkinById[id]!.pose, growth: 1.0, anim: null),
+    ], cols: 3, cell: 420);
     final demo = kSkins.first;
     await _sheet('growth_poses', [
       for (final p in Pose.values)

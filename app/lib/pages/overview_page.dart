@@ -112,8 +112,9 @@ class _OverviewPageState extends State<OverviewPage> {
     return PastelBackground(
       child: SafeArea(
         bottom: false,
-        child: ListView(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
+          child: Column(
           children: [
             Row(
               children: [
@@ -194,6 +195,7 @@ class _OverviewPageState extends State<OverviewPage> {
               prev2From: _rangeOf(_period, _shifted(-2, from)).$1,
             ),
           ],
+          ),
         ),
       ),
     );
@@ -460,6 +462,7 @@ class _Stats extends StatelessWidget {
                           height: 150,
                           child: PieChart(
                             PieChartData(
+                              pieTouchData: PieTouchData(enabled: false),
                               sectionsSpace: 3,
                               centerSpaceRadius: 44,
                               sections: [

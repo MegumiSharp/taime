@@ -26,6 +26,15 @@ Future<String?> kittenArtPath(String skinId, int stage, {bool sleeping = false})
   }
 }
 
+/// Forgets the pictures of [skinId] (a kitten you made was changed).
+Future<void> clearKittenArt(String skinId) async {
+  try {
+    for (final f in (await _dir()).listSync().whereType<File>()) {
+      if (f.uri.pathSegments.last.startsWith('${skinId}_')) f.deleteSync();
+    }
+  } catch (_) {}
+}
+
 /// Renders the 5 growth stages and the sleeping pose if missing.
 Future<void> ensureKittenArt(String skinId) async {
   final dir = await _dir();

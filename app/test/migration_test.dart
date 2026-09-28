@@ -23,7 +23,39 @@ Db openV1(List<String> inserts) {
   );
 }
 
+/// A database as Taime 2.0/2.1 left it (test/fixtures/schema_v2.sql).
+Db openV2(List<String> inserts) {
+  final schema = File('test/fixtures/schema_v2.sql').readAsStringSync();
+  return Db.forTesting(
+    NativeDatabase.memory(
+      setup: (raw) {
+        raw.execute(schema);
+        for (final s in inserts) {
+          raw.execute(s);
+        }
+        raw.execute('PRAGMA user_version = 2');
+      },
+    ),
+  );
+}
+
 void main() {
+  test('a 2.x database upgrades to notes and custom kittens', () async {
+    final db = openV2([
+      "INSERT INTO todos (id, title, created_at) VALUES (1, 'latte', 1758000000)",
+      "INSERT INTO purchases (id, skin_id, price, purchased_at) VALUES (1, 'ombra', 600, 1758000000)",
+    ]);
+    final t = (await db.select(db.todos).get()).single;
+    expect(t.title, 'latte');
+    expect(t.horizon, 0);
+    expect((await db.select(db.purchases).get()).single.skinId, 'ombra');
+    await db.into(db.notes).insert(NotesCompanion.insert(body: 'ciao', createdAt: DateTime(2026), updatedAt: DateTime(2026)));
+    await db.into(db.customSkins).insert(CustomSkinsCompanion.insert(name: 'Mia', spec: '{}', createdAt: DateTime(2026)));
+    expect((await db.select(db.notes).get()).single.body, 'ciao');
+    expect((await db.select(db.customSkins).get()).single.name, 'Mia');
+    await db.close();
+  });
+
   test('a 1.0 database upgrades with nothing lost', () async {
     final db = openV1([
       "INSERT INTO prefs VALUES ('palette', 'aabbcc-112233'), ('themeMode', 'dark'), ('breakAfterMin', '90')",
@@ -99,19 +131,28 @@ void main() {
     await db.close();
   });
 
-  test('a 2.0 backup round-trips', () async {
+  test('a backup round-trips', () async {
     final a = Db.forTesting(NativeDatabase.memory());
     await a.customStatement('select 1');
     await a.into(a.purchases).insert(PurchasesCompanion.insert(skinId: 'ombra', price: 600, purchasedAt: DateTime(2026, 9, 1)));
     await a.into(a.todos).insert(TodosCompanion.insert(title: 'comprare latte', createdAt: DateTime(2026, 9, 1), due: Value(DateTime(2026, 9, 2, 18)), hasTime: const Value(true)));
+    await a.into(a.todos).insert(TodosCompanion.insert(title: 'dopo', createdAt: DateTime(2026, 9, 1), horizon: const Value(2)));
+    await a.into(a.notes).insert(NotesCompanion.insert(body: 'idea', color: const Value(0xFFF2A7C3), date: Value(DateTime(2026, 9, 3, 9)), hasTime: const Value(true), remind: const Value(true), createdAt: DateTime(2026, 9, 1), updatedAt: DateTime(2026, 9, 1)));
+    await a.into(a.customSkins).insert(CustomSkinsCompanion.insert(name: 'Mia', spec: '{"base":1}', createdAt: DateTime(2026, 9, 1)));
     final dump = await dumpAll(a);
 
     final b = Db.forTesting(NativeDatabase.memory());
     await b.customStatement('select 1');
     await restoreAll(b, dump);
     expect((await b.select(b.purchases).get()).single.skinId, 'ombra');
-    final t = (await b.select(b.todos).get()).single;
-    expect(t.title, 'comprare latte');
+    final t = (await b.select(b.todos).get()).firstWhere((x) => x.title == 'comprare latte');
+    expect((await b.select(b.todos).get()).firstWhere((x) => x.title == 'dopo').horizon, 2);
+    final n = (await b.select(b.notes).get()).single;
+    expect(n.body, 'idea');
+    expect(n.color, 0xFFF2A7C3);
+    expect(n.date, DateTime(2026, 9, 3, 9));
+    expect(n.remind, isTrue);
+    expect((await b.select(b.customSkins).get()).single.spec, '{"base":1}');
     expect(t.due, DateTime(2026, 9, 2, 18));
     expect(t.hasTime, isTrue);
     expect((await b.select(b.activities).get()).length, 3);

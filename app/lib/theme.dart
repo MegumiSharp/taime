@@ -51,6 +51,12 @@ class TaimeColors extends ThemeExtension<TaimeColors> {
   final Color grass, grassRich, earth, danger;
   final bool dark;
 
+  /// Soft drop shadow. Dark themes use black: a shadow in the (light) text
+  /// colour would glow like a halo.
+  Color shadow([double strength = 1]) => dark
+      ? const Color(0xFF000000).withValues(alpha: 0.22 * strength)
+      : text.withValues(alpha: 0.05 * strength);
+
   factory TaimeColors.from(Settings s, {required bool dark}) {
     double hue;
     double k;

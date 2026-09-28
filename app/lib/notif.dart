@@ -92,8 +92,18 @@ AndroidNotificationDetails _reminderDetails(
     additionalFlags: s.soundLoop ? Int32List.fromList([4]) : null, // FLAG_INSISTENT
     timeoutAfter: s.soundLoop ? 60000 : null,
     visibility: NotificationVisibility.public,
+    // Wakes the screen and shows on the lock screen, like an alarm clock.
+    fullScreenIntent: true,
     actions: actions,
   );
+}
+
+/// Android 14+ may ask the user to allow full-screen alerts; returns at once
+/// when they are already allowed (the usual case for an installed APK).
+Future<void> requestFullScreenAlerts() async {
+  try {
+    await _android?.requestFullScreenIntentPermission();
+  } catch (_) {}
 }
 
 Future<void> _dropOldChannel(Settings s) async {
@@ -182,6 +192,37 @@ Future<void> scheduleTodoReminder({
 
 Future<void> cancelTodoReminder(int todoId) =>
     plugin.cancel(id: kTodoIdBase + todoId);
+
+// --- Note reminders -----------------------------------------------------------
+
+const int kNoteIdBase = 200000;
+
+const _noteDetails = AndroidNotificationDetails(
+  'note',
+  'Promemoria note',
+  channelDescription: 'Le note con un promemoria',
+  importance: Importance.high,
+  priority: Priority.high,
+  category: AndroidNotificationCategory.reminder,
+);
+
+Future<void> scheduleNoteReminder({required int noteId, required DateTime at, required String text}) async {
+  await initTz();
+  await plugin.cancel(id: kNoteIdBase + noteId);
+  if (!at.isAfter(DateTime.now())) return;
+  final lines = text.trim().split('\n');
+  await plugin.zonedSchedule(
+    id: kNoteIdBase + noteId,
+    scheduledDate: tz.TZDateTime.from(at, tz.local),
+    title: lines.first.length > 60 ? '${lines.first.substring(0, 60)}…' : lines.first,
+    body: lines.length > 1 ? lines.skip(1).join(' ').trim() : 'Nota di Taime',
+    payload: 'note:$noteId',
+    androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    notificationDetails: const NotificationDetails(android: _noteDetails),
+  );
+}
+
+Future<void> cancelNoteReminder(int noteId) => plugin.cancel(id: kNoteIdBase + noteId);
 
 // --- "Still there?" -----------------------------------------------------------
 

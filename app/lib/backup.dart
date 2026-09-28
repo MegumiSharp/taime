@@ -13,8 +13,8 @@ import 'db.dart';
 import 'kitten/skins.dart';
 import 'palette.dart';
 
-/// JSON backup (re-importable, v1 and v2) and CSV export (for spreadsheets).
-const int kBackupVersion = 2;
+/// JSON backup (re-importable, v1 to v3) and CSV export (for spreadsheets).
+const int kBackupVersion = 3;
 
 String? _iso(DateTime? d) => d?.toIso8601String();
 DateTime? _parse(Object? v) => v == null ? null : DateTime.parse(v as String);
@@ -26,6 +26,8 @@ Future<Map<String, dynamic>> dumpAll(Db db) async {
   final buys = await db.select(db.purchases).get();
   final cats = await db.select(db.todoCategories).get();
   final todos = await db.select(db.todos).get();
+  final notes = await db.select(db.notes).get();
+  final custom = await db.select(db.customSkins).get();
   return {
     'app': 'taime',
     'version': kBackupVersion,
@@ -79,13 +81,31 @@ Future<Map<String, dynamic>> dumpAll(Db db) async {
           'completedAt': _iso(t.completedAt),
           'sort': t.sort,
           'createdAt': _iso(t.createdAt),
+          'horizon': t.horizon,
         },
+    ],
+    'notes': [
+      for (final n in notes)
+        {
+          'id': n.id,
+          'body': n.body,
+          'color': n.color,
+          'date': _iso(n.date),
+          'hasTime': n.hasTime,
+          'remind': n.remind,
+          'createdAt': _iso(n.createdAt),
+          'updatedAt': _iso(n.updatedAt),
+        },
+    ],
+    'customSkins': [
+      for (final c in custom)
+        {'id': c.id, 'name': c.name, 'spec': c.spec, 'deleted': c.deleted, 'createdAt': _iso(c.createdAt)},
     ],
     'prefs': await db.allPrefs(),
   };
 }
 
-/// Replaces everything in [db] with [data]. Accepts version 1 and 2 backups.
+/// Replaces everything in [db] with [data]. Accepts version 1 to 3 backups.
 Future<int> restoreAll(Db db, Map<String, dynamic> data) async {
   final version = (data['version'] as int?) ?? 1;
   final prefs = (data['prefs'] as Map?)?.cast<String, String>() ?? const {};
@@ -94,7 +114,7 @@ Future<int> restoreAll(Db db, Map<String, dynamic> data) async {
   List<Map<String, dynamic>> list(String k) => ((data[k] as List?) ?? const []).cast<Map<String, dynamic>>();
 
   await db.transaction(() async {
-    for (final t in <TableInfo<Table, dynamic>>[db.todos, db.todoCategories, db.purchases, db.segments, db.sessions, db.activities, db.prefs]) {
+    for (final t in <TableInfo<Table, dynamic>>[db.notes, db.customSkins, db.todos, db.todoCategories, db.purchases, db.segments, db.sessions, db.activities, db.prefs]) {
       await db.delete(t).go();
     }
     for (final a in list('activities')) {
@@ -175,6 +195,32 @@ Future<int> restoreAll(Db db, Map<String, dynamic> data) async {
           completedAt: Value(_parse(t['completedAt'])),
           sort: Value(t['sort'] as int? ?? 0),
           createdAt: _parse(t['createdAt']) ?? DateTime.now(),
+          horizon: Value(t['horizon'] as int? ?? 0),
+        ),
+      );
+    }
+    for (final n in list('notes')) {
+      await db.into(db.notes).insert(
+        NotesCompanion.insert(
+          id: Value(n['id'] as int),
+          body: n['body'] as String,
+          color: Value(n['color'] as int?),
+          date: Value(_parse(n['date'])),
+          hasTime: Value(n['hasTime'] as bool? ?? false),
+          remind: Value(n['remind'] as bool? ?? false),
+          createdAt: _parse(n['createdAt']) ?? DateTime.now(),
+          updatedAt: _parse(n['updatedAt']) ?? DateTime.now(),
+        ),
+      );
+    }
+    for (final c in list('customSkins')) {
+      await db.into(db.customSkins).insert(
+        CustomSkinsCompanion.insert(
+          id: Value(c['id'] as int),
+          name: c['name'] as String,
+          spec: c['spec'] as String,
+          deleted: Value(c['deleted'] as bool? ?? false),
+          createdAt: _parse(c['createdAt']) ?? DateTime.now(),
         ),
       );
     }

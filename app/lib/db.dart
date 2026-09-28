@@ -96,6 +96,37 @@ class Todos extends Table {
   DateTimeColumn get completedAt => dateTime().nullable()();
   IntColumn get sort => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime()();
+
+  /// For to-dos without a date: 0 = oggi, 1 = questa settimana, 2 = più avanti.
+  IntColumn get horizon => integer().withDefault(const Constant(0))();
+}
+
+/// Free-form notes: an endless list, optionally coloured, dated, reminded.
+class Notes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get body => text()();
+
+  /// ARGB swatch; null = plain card.
+  IntColumn get color => integer().nullable()();
+  DateTimeColumn get date => dateTime().nullable()();
+  BoolColumn get hasTime => boolean().withDefault(const Constant(false))();
+
+  /// Notify at [date] (09:00 when it has no time).
+  BoolColumn get remind => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+}
+
+/// Kittens made in "Crea il tuo gattino". Deleted ones stay (flagged) so past
+/// sessions keep drawing them.
+class CustomSkins extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()();
+
+  /// JSON, see `Skin.toJson`.
+  TextColumn get spec => text()();
+  BoolColumn get deleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime()();
 }
 
 typedef SessionWork = ({Session session, int workSeconds});
@@ -109,6 +140,8 @@ typedef SessionWork = ({Session session, int workSeconds});
     Purchases,
     TodoCategories,
     Todos,
+    Notes,
+    CustomSkins,
   ],
 )
 class Db extends _$Db {
@@ -116,7 +149,7 @@ class Db extends _$Db {
   Db.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -148,6 +181,11 @@ class Db extends _$Db {
         await m.createTable(purchases);
         await m.createTable(todoCategories);
         await m.createTable(todos);
+      }
+      if (from == 2) await m.addColumn(todos, todos.horizon);
+      if (from < 3) {
+        await m.createTable(notes);
+        await m.createTable(customSkins);
       }
     },
     beforeOpen: (details) async {
@@ -402,6 +440,18 @@ class Db extends _$Db {
   Stream<List<TodoCategory>> watchTodoCategories() => (select(
     todoCategories,
   )..orderBy([(c) => OrderingTerm(expression: c.sort)])).watch();
+
+  // --- Notes ----------------------------------------------------------------
+
+  Stream<List<Note>> watchNotes() => (select(notes)
+        ..orderBy([(n) => OrderingTerm(expression: n.createdAt, mode: OrderingMode.desc)]))
+      .watch();
+
+  Future<Note?> noteById(int id) => (select(notes)..where((n) => n.id.equals(id))).getSingleOrNull();
+
+  // --- Custom kittens -------------------------------------------------------
+
+  Stream<List<CustomSkin>> watchCustomSkins() => select(customSkins).watch();
 
   // --- Prefs ----------------------------------------------------------------
 

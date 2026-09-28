@@ -17,6 +17,7 @@ class KittenView extends StatefulWidget {
     this.size = 160,
     this.animate = true,
     this.actions = true,
+    this.showcase = false,
   });
 
   final Skin skin;
@@ -29,6 +30,9 @@ class KittenView extends StatefulWidget {
 
   /// Random little scenes (fly, bottle, yawn...) now and then.
   final bool actions;
+
+  /// Shop windows: the scenes start soon and come more often, so you see them.
+  final bool showcase;
 
   @override
   State<KittenView> createState() => _KittenViewState();
@@ -46,12 +50,13 @@ class _KittenViewState extends State<KittenView>
   double _bumpAt = -10;
   double _nextAction = 12, _actionAt = -100;
   KittenAction _action = KittenAction.none;
+  KittenAction _last = KittenAction.none;
   double _now = 0;
 
   @override
   void initState() {
     super.initState();
-    _nextAction = 8 + _rnd.nextDouble() * 14;
+    _nextAction = widget.showcase ? 1.5 + _rnd.nextDouble() * 3 : 8 + _rnd.nextDouble() * 14;
     _anim.t = _rnd.nextDouble() * 10; // desync kittens shown together
   }
 
@@ -111,17 +116,20 @@ class _KittenViewState extends State<KittenView>
     }
     _anim.look += (_lookTarget - _anim.look) * 0.06;
 
-    // Every 25-70 s, maybe a little scene; never while sleeping.
+    // Every 25-70 s (5-11 s in a shop window) a little scene; never asleep.
     if (widget.actions && !sleeping && _action == KittenAction.none && t >= _nextAction) {
-      final options = KittenAction.values.where((a) => a != KittenAction.none).toList();
-      _action = options[_rnd.nextInt(options.length)];
+      final options = actionsFor(widget.skin);
+      // Never the same scene twice in a row.
+      final pick = options.where((a) => a != _last).toList();
+      _action = pick[_rnd.nextInt(pick.length)];
+      _last = _action;
       _actionAt = t;
     }
     if (_action != KittenAction.none) {
       final p = (t - _actionAt) / kActionSeconds[_action]!;
       if (p >= 1) {
         _action = KittenAction.none;
-        _nextAction = t + 25 + _rnd.nextDouble() * 45;
+        _nextAction = t + (widget.showcase ? 5 + _rnd.nextDouble() * 6 : 25 + _rnd.nextDouble() * 45);
       }
       _anim.action = _action;
       _anim.actionT = p.clamp(0.0, 1.0);

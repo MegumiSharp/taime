@@ -6,7 +6,7 @@ import '../theme.dart';
 import '../ui/motion.dart';
 import '../ui/widgets.dart';
 
-/// How Taime works, in five short pages. Shown once at first launch and from
+/// How Taime works, in six short pages. Shown once at first launch and from
 /// Impostazioni → Come funziona.
 Future<void> showOnboarding(BuildContext context) {
   return showDialog<void>(
@@ -52,9 +52,14 @@ const _pages = [
     'merlino',
   ),
   _Page(
-    'To-do veloci',
-    'Scrivi come parli: "studiare fisica domani alle 15 #studio !1". Data, ora, categoria e priorità si riconoscono da sole.',
+    'To-do e note',
+    'To-do per oggi, per la settimana o per più avanti: scrivi come parli, "studiare fisica domani alle 15". Accanto trovi le Note, con colori e promemoria.',
     'chef',
+  ),
+  _Page(
+    'Crea il tuo gattino',
+    'Nel Negozio, alla voce Crea, mescoli gli stili dei gattini adottati e ne crei fino a cinque tutti tuoi.',
+    'wendy',
   ),
 ];
 

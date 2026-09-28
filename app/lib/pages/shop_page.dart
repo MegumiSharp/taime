@@ -13,33 +13,51 @@ import '../settings.dart';
 import '../theme.dart';
 import '../ui/motion.dart';
 import '../ui/widgets.dart';
+import 'create_kitten.dart';
 
-/// Skins the user can use: the free ones plus purchases.
+/// Skins the user can use: the free ones, purchases and the ones you made.
 Future<Set<String>> ownedSkinIds() async {
   final bought = await db.select(db.purchases).get();
+  final made = await (db.select(db.customSkins)..where((c) => c.deleted.equals(false))).get();
   return {
     for (final s in kSkins)
       if (s.free) s.id,
     for (final p in bought) p.skinId,
+    for (final c in made) '$kCustomPrefix${c.id}',
   };
 }
 
 /// Live balance: finished work + [extraSeconds] of work in progress − spent.
+///
+/// Starts from the last known totals, so a chip that is rebuilt (a tab
+/// switch, scrolling back up) does not count up from zero again.
 class BalanceBuilder extends StatelessWidget {
   const BalanceBuilder({super.key, required this.builder, this.extraSeconds = 0});
   final Widget Function(BuildContext context, int balance) builder;
   final int extraSeconds;
 
+  static int? _work, _spent;
+
+  /// Reads the totals once at startup, so even the first chip is steady.
+  static Future<void> warmUp() async {
+    _work = await db.watchClosedWorkSeconds().first;
+    _spent = await db.watchSpent().first;
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<int>(
+      initialData: _work,
       stream: db.watchClosedWorkSeconds(),
       builder: (context, w) => StreamBuilder<int>(
+        initialData: _spent,
         stream: db.watchSpent(),
-        builder: (context, sp) => builder(
-          context,
-          crocchetteBalance((w.data ?? 0) + extraSeconds, sp.data ?? 0),
-        ),
+        builder: (context, sp) {
+          _work = w.data ?? _work;
+          _spent = sp.data ?? _spent;
+          if (_work == null || _spent == null) return builder(context, 0);
+          return builder(context, crocchetteBalance(_work! + extraSeconds, _spent!));
+        },
       ),
     );
   }
@@ -165,8 +183,8 @@ class _ShopPageState extends State<ShopPage> {
                         ),
                         const SizedBox(height: 16),
                         PillSelector<String>(
-                          values: const ['evidenza', 'tutti', 'miei'],
-                          labels: const ['In evidenza', 'Tutti', 'Album'],
+                          values: const ['evidenza', 'tutti', 'miei', 'crea'],
+                          labels: const ['In evidenza', 'Tutti', 'Album', 'Crea'],
                           selected: _tab,
                           onChanged: (v) => setState(() => _tab = v),
                         ),
@@ -239,14 +257,22 @@ class _ShopPageState extends State<ShopPage> {
             _grid(context, kSkins.where((s) => s.rarity == r).toList(), owned, balance),
           ],
         ];
+      case 'crea':
+        return [
+          const SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            sliver: SliverToBoxAdapter(child: _Maker()),
+          ),
+        ];
       default:
-        final mine = kSkins.where((s) => owned.contains(s.id)).toList();
+        final adopted = kSkins.where((s) => owned.contains(s.id)).toList();
+        final mine = [...adopted, ...myCustomSkins];
         return [
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             sliver: SliverToBoxAdapter(
               child: Text(
-                '${mine.length} di ${kSkins.length} gattini adottati.',
+                '${adopted.length} di ${kSkins.length} gattini adottati.',
                 style: TextStyle(color: context.tc.muted),
               ),
             ),
@@ -295,8 +321,11 @@ class _ShopPageState extends State<ShopPage> {
 }
 
 class _RarityDot extends StatelessWidget {
-  const _RarityDot({required this.rarity});
+  const _RarityDot({required this.rarity, this.custom = false});
   final Rarity rarity;
+
+  /// A kitten you made: "Creato da te" in the theme colour.
+  final bool custom;
 
   @override
   Widget build(BuildContext context) {
@@ -304,13 +333,13 @@ class _RarityDot extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: rarityColor(rarity, dark: tc.dark, soft: true),
+        color: custom ? tc.accentSoft : rarityColor(rarity, dark: tc.dark, soft: true),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        rarity.label,
+        custom ? 'Creato da te' : rarity.label,
         style: TextStyle(
-          color: rarityColor(rarity, dark: tc.dark),
+          color: custom ? tc.accent : rarityColor(rarity, dark: tc.dark),
           fontWeight: FontWeight.w800,
           fontSize: 12,
         ),
@@ -420,8 +449,8 @@ class _FeaturedCard extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: tc.text.withValues(alpha: tc.dark ? 0.25 : 0.08),
-              blurRadius: 20,
+              color: tc.shadow(1.3),
+              blurRadius: 18,
               offset: const Offset(0, 8),
             ),
           ],
@@ -431,7 +460,7 @@ class _FeaturedCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _RarityDot(rarity: skin.rarity),
-            Expanded(child: Center(child: KittenView(skin: skin, size: 210))),
+            Expanded(child: Center(child: KittenView(skin: skin, size: 210, showcase: true))),
             Text(skin.name, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 10),
             Container(
@@ -493,7 +522,7 @@ class _PreviewState extends State<_Preview> {
               builder: (context, balance) => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _RarityDot(rarity: skin.rarity),
+                  _RarityDot(rarity: skin.rarity, custom: skin.isCustom),
                   const SizedBox(height: 6),
                   Text(skin.name, style: Theme.of(context).textTheme.headlineSmall),
                   SizedBox(
@@ -502,7 +531,7 @@ class _PreviewState extends State<_Preview> {
                       alignment: Alignment.center,
                       children: [
                         if (_justBought) const _Confetti(),
-                        KittenView(skin: skin, pose: _pose, growth: _growth, size: 220),
+                        KittenView(skin: skin, pose: _pose, growth: _growth, size: 220, showcase: true),
                       ],
                     ),
                   ),
@@ -532,6 +561,20 @@ class _PreviewState extends State<_Preview> {
                     ],
                   ),
                   const SizedBox(height: 10),
+                  if (skin.isCustom) ...[
+                    PillButton(
+                      label: 'Modifica',
+                      icon: Icons.brush_rounded,
+                      kind: PillKind.soft,
+                      expand: true,
+                      onTap: () {
+                        final nav = Navigator.of(context);
+                        nav.pop();
+                        openKittenMaker(nav.context, edit: skin);
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   if (active)
                     PillButton(label: 'In uso', icon: Icons.check_rounded, kind: PillKind.soft, expand: true, onTap: null)
                   else if (owned)
@@ -683,7 +726,9 @@ class _Album extends StatelessWidget {
                                   ],
                                 ),
                                 Text(
-                                  adopted[sorted[i].id] == null
+                                  sorted[i].isCustom
+                                      ? 'Creato da te'
+                                      : adopted[sorted[i].id] == null
                                       ? "Con te dall'inizio"
                                       : 'Adottato il ${DateFormat('d MMMM y', 'it').format(adopted[sorted[i].id]!)}',
                                   style: TextStyle(color: tc.muted, fontSize: 12.5),
@@ -728,4 +773,76 @@ class _AlbumStat extends StatelessWidget {
       Text(text, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
     ],
   );
+}
+
+/// The "Crea" tab: your kittens (up to five) and a card to make a new one.
+class _Maker extends StatelessWidget {
+  const _Maker();
+
+  @override
+  Widget build(BuildContext context) {
+    final tc = context.tc;
+    return StreamBuilder<List<CustomSkin>>(
+      stream: db.watchCustomSkins(),
+      builder: (context, snap) {
+        final made = myCustomSkins;
+        final room = made.length < kMaxCustomSkins;
+        return StreamBuilder<Map<String, String>>(
+          stream: db.watchPrefs(),
+          builder: (context, prefSnap) {
+            final active = Settings(prefSnap.data ?? const {}).activeSkin;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Mescola gli stili dei gattini che hai adottato: pelo, muso, occhi, accessori ed effetti. '
+                  'Puoi crearne fino a $kMaxCustomSkins.',
+                  style: TextStyle(color: tc.muted, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 0.72,
+                  children: [
+                    for (final s in made) _SkinTile(skin: s, owned: true, active: s.id == active, balance: 0),
+                    if (room)
+                      TapScale(
+                        onTap: () => openKittenMaker(context),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: tc.surface.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(kRadius),
+                            border: Border.all(color: tc.accent.withValues(alpha: 0.5), width: 1.5),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_rounded, size: 34, color: tc.accent),
+                              const SizedBox(height: 4),
+                              Text('Nuovo', style: TextStyle(fontWeight: FontWeight.w800, color: tc.accent)),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  room
+                      ? '${made.length} di $kMaxCustomSkins creati. Tocca un gattino per usarlo o modificarlo.'
+                      : 'Hai già $kMaxCustomSkins gattini: modificane o eliminane uno per crearne un altro.',
+                  style: TextStyle(color: tc.muted, fontSize: 12.5),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 }

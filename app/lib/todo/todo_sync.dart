@@ -136,6 +136,34 @@ Future<Future<void> Function()> postponeTodo(Todo t, DateTime day) async {
   return () => updateTodo(t.id, TodosCompanion(due: Value(old)));
 }
 
+/// Deletes the given completed to-dos and their subtasks. Returns an undo.
+Future<Future<void> Function()> clearCompleted(List<Todo> done) async {
+  final ids = [for (final t in done) t.id];
+  final subs = await (db.select(db.todos)..where((x) => x.parentId.isIn(ids))).get();
+  await (db.delete(db.todos)..where((x) => x.id.isIn(ids) | x.parentId.isIn(ids))).go();
+  return () async {
+    await db.batch((b) {
+      b.insertAll(db.todos, done);
+      b.insertAll(db.todos, subs);
+    });
+  };
+}
+
+/// Section names, in order: see [sectionOf].
+const List<String> kHorizonNames = ['Oggi', 'Questa settimana', 'Più avanti'];
+
+/// Where a to-do shows up: 0 oggi (and overdue), 1 this week, 2 later. Its
+/// date decides; without one, the horizon picked when it was made.
+int sectionOf(Todo t, DateTime now) => sectionFor(t.due, t.horizon, now);
+
+int sectionFor(DateTime? due, int horizon, DateTime now) {
+  if (due == null) return horizon.clamp(0, 2);
+  // Rounded hours, so a DST change (a 23 h day) is still one day.
+  final days = (DateTime(due.year, due.month, due.day).difference(DateTime(now.year, now.month, now.day)).inHours / 24).round();
+  if (days <= 0) return 0;
+  return days < 7 ? 1 : 2;
+}
+
 /// Finds a category by name (any case) or creates it.
 Future<int> categoryIdFor(String name) async {
   final all = await db.select(db.todoCategories).get();

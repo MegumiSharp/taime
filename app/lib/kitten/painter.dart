@@ -13,12 +13,21 @@ enum KittenAction { none, mosca, bottiglia, sbadiglio, farfalla, gomitolo, starn
 /// How long each scene lasts, in seconds.
 const Map<KittenAction, double> kActionSeconds = {
   KittenAction.mosca: 4,
-  KittenAction.bottiglia: 3.6,
+  KittenAction.bottiglia: 3.8,
   KittenAction.sbadiglio: 2.4,
   KittenAction.farfalla: 5,
   KittenAction.gomitolo: 3.8,
   KittenAction.starnuto: 1.6,
 };
+
+/// Scenes that make sense for [skin]: floating kittens have no floor to play on.
+List<KittenAction> actionsFor(Skin skin) {
+  final floats = skin.has(Effect.fluttua) || skin.has(Effect.fantasma);
+  return [
+    for (final a in KittenAction.values)
+      if (a != KittenAction.none && !(floats && (a == KittenAction.bottiglia || a == KittenAction.gomitolo))) a,
+  ];
+}
 
 /// Everything that moves on a kitten, updated by `KittenView` every frame.
 class KittenAnim extends ChangeNotifier {
@@ -75,21 +84,43 @@ class KittenPainter extends CustomPainter {
     final ear = a?.ear ?? 0;
     final look = a?.look ?? 0;
     final bump = a?.bump ?? 0;
-    final act = a?.action ?? KittenAction.none;
+    final sleeping = pose == Pose.dorme;
+    final act = sleeping ? KittenAction.none : (a?.action ?? KittenAction.none);
     final ap = a?.actionT ?? 0;
     double win(double from, double to) => ap < from || ap > to ? 0 : math.sin(math.pi * (ap - from) / (to - from));
+    double ramp(double from, double to) {
+      final x = ((ap - from) / (to - from)).clamp(0.0, 1.0);
+      return x * x * (3 - 2 * x);
+    }
+
     final yawn = act == KittenAction.sbadiglio ? win(0.1, 0.9) : 0.0;
     final sneezeNod = act == KittenAction.starnuto ? win(0, 0.55) : 0.0;
     final hop = act == KittenAction.starnuto ? win(0.55, 1) * 8 : 0.0;
     final forceClosed = yawn > 0.35 || sneezeNod > 0.4;
     final lookEff = switch (act) {
       KittenAction.mosca => math.cos(ap * math.pi * 2.2) * -0.9,
-      KittenAction.bottiglia => ap > 0.1 ? 1.0 : look,
+      KittenAction.bottiglia => ap > 0.06 && ap < 0.9 ? -1.0 : look,
       KittenAction.farfalla => (_butterfly(ap).dx - 100) / 60,
-      KittenAction.gomitolo => ap > 0.1 && ap < 0.85 ? -1.0 : look,
+      KittenAction.gomitolo => ap > 0.08 && ap < 0.8 ? 1.0 : look,
       _ => look,
     }.clamp(-1.0, 1.0);
     final lookUp = act == KittenAction.farfalla && ap > 0.25 && ap < 0.75 ? -2.0 : 0.0;
+
+    // A front paw reaching out and back: left for the bottle, right for the yarn.
+    final reach = switch (act) {
+      KittenAction.bottiglia => ramp(0.16, 0.4) - ramp(0.52, 0.74),
+      KittenAction.gomitolo => ramp(0.3, 0.42) - ramp(0.5, 0.66),
+      _ => 0.0,
+    };
+    final reachPaw = act == KittenAction.bottiglia ? 0 : 1;
+    Offset pawShift(int i) {
+      if (reach <= 0 || i != reachPaw) return Offset.zero;
+      final arc = math.sin(math.pi * reach);
+      return reachPaw == 0
+          ? Offset(-30 * reach, -12 * reach - 10 * arc)
+          : Offset(24 * reach, -8 * reach - 8 * arc);
+    }
+
     final floats = skin.has(Effect.fluttua) || skin.has(Effect.fantasma);
     final floatY = floats ? -(12 + 6 * math.sin(t * 1.7)) : 0.0;
 
@@ -116,11 +147,11 @@ class KittenPainter extends CustomPainter {
     if (ghost) {
       canvas.saveLayer(const Rect.fromLTWH(-60, -120, 320, 340), Paint()..color = const Color(0xBF000000));
     }
+    canvas.save();
     canvas.translate(0, floatY - hop);
 
     final geo = _Geo.of(pose);
     final sb = _lerp(0.64, 1.0, g);
-    final sleeping = pose == Pose.dorme;
     final sbY = sb * (1 + (sleeping ? 0.03 : 0.018) * breath);
     final sh = _lerp(1.16, 1.0, g) * geo.headScale;
     final rise = 192 - geo.bodyTop;
@@ -136,6 +167,7 @@ class KittenPainter extends CustomPainter {
     final third = Color(coat.third ?? coat.base);
     final darkCoat = base.computeLuminance() < 0.12;
     final featureLine = darkCoat ? const Color(0xFFE7D6CE) : outline;
+    final panda = coat.pattern == CoatPattern.panda;
 
     // Transforms --------------------------------------------------------------
     void bodyTf() {
@@ -163,10 +195,10 @@ class KittenPainter extends CustomPainter {
     final whiteMuzzle = coat.whiteMuzzle;
     final pawColor = coat.whitePaws
         ? _white
-        : (coat.pattern == CoatPattern.point ? second : base);
-    final earColor = coat.pattern == CoatPattern.point ? second : base;
+        : (coat.pattern == CoatPattern.point || panda ? second : base);
+    final earColor = coat.pattern == CoatPattern.point || panda ? second : base;
     final tailColor = switch (coat.pattern) {
-      CoatPattern.point => second,
+      CoatPattern.point || CoatPattern.panda => second,
       CoatPattern.calico => third,
       _ => base,
     };
@@ -240,8 +272,8 @@ class KittenPainter extends CustomPainter {
     // Pass 1: outlines (drawn fat, the fill covers the inner half) --------------
     withTf(bodyTf, () {
       canvas.drawPath(body, stroke(outline, owBody * 2));
-      for (final p in paws) {
-        canvas.drawPath(p, stroke(outline, owBody * 2));
+      for (var i = 0; i < paws.length; i++) {
+        if (pawShift(i) == Offset.zero) canvas.drawPath(paws[i], stroke(outline, owBody * 2));
       }
     });
     if (sleeping) drawTail(outlinePass: true, fillPass: false);
@@ -263,14 +295,33 @@ class KittenPainter extends CustomPainter {
         canvas.drawOval(geo.belly, fill(_white));
         canvas.restore();
       }
+      if (!sleeping && (skin.accessory == Accessory.casco || skin.accessory2 == Accessory.casco)) {
+        _suitPanel(canvas, geo.belly.center + const Offset(0, 8), outline, owBody);
+      }
+      // A soft shadow under the chin instead of a hard line.
+      canvas.save();
+      canvas.clipPath(body);
+      canvas.translate(100, 192);
+      canvas.scale(1 / sb, 1 / sbY);
+      canvas.translate(-100, -192);
+      headTf();
+      canvas.drawPath(
+        Path.combine(PathOperation.difference, head.shift(const Offset(0, 8)), head),
+        fill(outline.withValues(alpha: darkCoat ? 0.28 : 0.13)),
+      );
+      canvas.restore();
     });
     if (sleeping) drawTail(outlinePass: false, fillPass: true);
     withTf(bodyTf, () {
-      for (final p in paws) {
+      _floorProps(canvas, act, ap, ramp, outline);
+      for (var i = 0; i < paws.length; i++) {
+        final off = pawShift(i);
+        final p = off == Offset.zero ? paws[i] : paws[i].shift(off);
+        if (off != Offset.zero) {
+          canvas.drawPath(p, stroke(outline.withValues(alpha: (reach * 5).clamp(0.0, 1.0)), owBody * 2));
+        }
         canvas.drawPath(p, fill(pawColor));
-      }
-      // Toe lines make paws read as paws.
-      for (final p in paws) {
+        // Toe lines make paws read as paws.
         final b = p.getBounds();
         if (b.width < 14) continue;
         final c = b.center;
@@ -278,6 +329,12 @@ class KittenPainter extends CustomPainter {
         canvas.drawLine(c + Offset(-3, b.height * 0.1), c + Offset(-3, b.height * 0.42), toe);
         canvas.drawLine(c + Offset(3, b.height * 0.1), c + Offset(3, b.height * 0.42), toe);
       }
+    });
+
+    // Collars and scarves wrap the neck: behind the head, in front of the body.
+    withTf(headTf, () {
+      _neckBack(canvas, skin.accessory, Color(skin.accessoryColor), outline, owHead);
+      _neckBack(canvas, skin.accessory2, Color(skin.accessory2Color), outline, owHead);
     });
 
     withTf(headTf, () {
@@ -297,7 +354,7 @@ class KittenPainter extends CustomPainter {
       _headPattern(canvas, coat, second, third);
       if (whiteMuzzle) {
         canvas.drawOval(
-          Rect.fromCenter(center: const Offset(100, 111), width: 52, height: 34),
+          Rect.fromCenter(center: const Offset(100, 112), width: 54, height: 36),
           fill(_white),
         );
       }
@@ -314,17 +371,6 @@ class KittenPainter extends CustomPainter {
       canvas.restore();
     });
 
-    // Chin line: where the head sits on the body.
-    if (!sleeping) {
-      withTf(headTf, () {
-        canvas.save();
-        final chin = Path()..addRect(const Rect.fromLTRB(20, 112, 180, 150));
-        canvas.clipPath(chin);
-        canvas.drawPath(head, stroke(outline, owHead * 1.05));
-        canvas.restore();
-      });
-    }
-
     // Face --------------------------------------------------------------------
     withTf(headTf, () {
       final eyeScale = _lerp(1.18, 1.0, g);
@@ -332,21 +378,24 @@ class KittenPainter extends CustomPainter {
       final eyeY = 95.0 + lookUp;
       for (final ex in const [75.0, 125.0]) {
         final c = Offset(ex + dx, eyeY);
+        final lineColor = panda ? const Color(0xFFE7D6CE) : featureLine;
         if (sleeping || forceClosed) {
-          _closedEye(canvas, c, featureLine, owHead);
+          _closedEye(canvas, c, lineColor, owHead);
         } else if (blink > 0.6) {
           final p = Path()
             ..moveTo(c.dx - 6.5, c.dy)
             ..quadraticBezierTo(c.dx, c.dy + 3.5, c.dx + 6.5, c.dy);
-          canvas.drawPath(p, stroke(featureLine, owHead * 0.9));
+          canvas.drawPath(p, stroke(lineColor, owHead * 0.9));
         } else {
           final open = (1 - blink * 1.3).clamp(0.12, 1.0);
           if (skin.eyes != EyeStyle.puntini) {
             final r = 7.4 * eyeScale;
-            canvas.drawOval(
-              Rect.fromCenter(center: c, width: r * 2, height: r * 2 * open),
-              fill(skin.eyes == EyeStyle.dorati ? const Color(0xFFF0CD6A) : const Color(0xFFA9CFEF)),
-            );
+            final iris = switch (skin.eyes) {
+              EyeStyle.dorati => const Color(0xFFF0CD6A),
+              EyeStyle.verdi => const Color(0xFFA9D39A),
+              _ => const Color(0xFFA9CFEF),
+            };
+            canvas.drawOval(Rect.fromCenter(center: c, width: r * 2, height: r * 2 * open), fill(iris));
             canvas.drawOval(
               Rect.fromCenter(center: c, width: r * 2, height: r * 2 * open),
               stroke(_darkLine, owHead * 0.6),
@@ -359,7 +408,7 @@ class KittenPainter extends CustomPainter {
             final r = 6.3 * eyeScale;
             canvas.drawOval(
               Rect.fromCenter(center: c, width: r * 2, height: r * 2 * open),
-              fill(darkCoat ? const Color(0xFF1E1718) : _eye),
+              fill(darkCoat || panda ? const Color(0xFF1E1718) : _eye),
             );
           }
           if (open > 0.5) {
@@ -400,18 +449,17 @@ class KittenPainter extends CustomPainter {
       if (skin.accessory2 != Accessory.mantello) {
         _accessory(canvas, skin.accessory2, Color(skin.accessory2Color), outline, owHead, t);
       } else {
-        canvas.drawCircle(const Offset(100, 128), 5.5, fill(_gold));
-        canvas.drawCircle(const Offset(100, 128), 5.5, stroke(outline, owHead * 0.7));
+        canvas.drawCircle(const Offset(100, 140), 5.5, fill(_gold));
+        canvas.drawCircle(const Offset(100, 140), 5.5, stroke(outline, owHead * 0.7));
       }
+      _headProps(canvas, act, ap, ramp, win, outline, t);
     });
 
+    canvas.restore(); // float / hop
     if (ghost) canvas.restore();
     _frontEffect(canvas, t, skin.effect);
     if (skin.effect2 != skin.effect) _frontEffect(canvas, t, skin.effect2);
     if (sleeping) _zzz(canvas, t, geo.head.dx - 20, geo.head.dy - 40);
-    if (act != KittenAction.none) {
-      _actionProps(canvas, act, ap, outline, pawColor, t, win);
-    }
 
     canvas.restore();
   }
@@ -457,23 +505,45 @@ class KittenPainter extends CustomPainter {
 
   void _headPattern(Canvas c, Coat coat, Color second, Color third) {
     final p = Paint()..style = PaintingStyle.fill;
+    final s = Paint()
+      ..color = second
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    const cheeks = [
+      (Offset(38, 90), Offset(52, 92)),
+      (Offset(39, 101), Offset(51, 100.5)),
+      (Offset(162, 90), Offset(148, 92)),
+      (Offset(161, 101), Offset(149, 100.5)),
+    ];
     switch (coat.pattern) {
       case CoatPattern.tigrato:
-        final s = Paint()
-          ..color = second
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 5
-          ..strokeCap = StrokeCap.round;
         c.drawLine(const Offset(90, 47), const Offset(92.5, 60), s);
         c.drawLine(const Offset(100, 45), const Offset(100, 61), s);
         c.drawLine(const Offset(110, 47), const Offset(107.5, 60), s);
-        for (final (a, b) in const [
-          (Offset(38, 90), Offset(52, 92)),
-          (Offset(39, 101), Offset(51, 100.5)),
-          (Offset(162, 90), Offset(148, 92)),
-          (Offset(161, 101), Offset(149, 100.5)),
-        ]) {
+        for (final (a, b) in cheeks) {
           c.drawLine(a, b, s);
+        }
+      case CoatPattern.soriano:
+        // The tabby "M" on the forehead, cheek stripes and a few light flecks.
+        c.drawPath(
+          Path()
+            ..moveTo(86, 60)
+            ..quadraticBezierTo(87, 52, 90, 49)
+            ..quadraticBezierTo(94, 54, 95, 57)
+            ..quadraticBezierTo(98, 50, 100, 46)
+            ..quadraticBezierTo(102, 50, 105, 57)
+            ..quadraticBezierTo(106, 54, 110, 49)
+            ..quadraticBezierTo(113, 52, 114, 60),
+          s..strokeWidth = 3.8,
+        );
+        s.strokeWidth = 5;
+        for (final (a, b) in cheeks) {
+          c.drawLine(a, b, s);
+        }
+        for (final o in const [Offset(76, 60), Offset(126, 58), Offset(66, 116), Offset(136, 118)]) {
+          c.drawOval(Rect.fromCenter(center: o, width: 7, height: 4), p..color = third);
         }
       case CoatPattern.calico:
         c.drawCircle(const Offset(58, 56), 31, p..color = second);
@@ -486,6 +556,14 @@ class KittenPainter extends CustomPainter {
       case CoatPattern.macchie:
         c.drawCircle(const Offset(62, 62), 11, p..color = second);
         c.drawCircle(const Offset(140, 58), 8, p..color = second);
+      case CoatPattern.panda:
+        for (final (o, rot) in const [(Offset(75, 96), -0.5), (Offset(125, 96), 0.5)]) {
+          c.save();
+          c.translate(o.dx, o.dy);
+          c.rotate(rot);
+          c.drawOval(Rect.fromCenter(center: Offset.zero, width: 27, height: 21), p..color = second);
+          c.restore();
+        }
       case CoatPattern.tintaUnita:
         break;
     }
@@ -509,6 +587,7 @@ class KittenPainter extends CustomPainter {
     final p = Paint();
     switch (coat.pattern) {
       case CoatPattern.tigrato:
+      case CoatPattern.soriano:
         final s = Paint()
           ..color = second
           ..style = PaintingStyle.stroke
@@ -541,6 +620,16 @@ class KittenPainter extends CustomPainter {
         for (final (a, b) in lines) {
           c.drawLine(a, b, s);
         }
+        if (coat.pattern == CoatPattern.soriano) {
+          final flecks = switch (pose) {
+            Pose.seduto => const [Offset(64, 128), Offset(138, 124), Offset(60, 184), Offset(142, 182)],
+            Pose.pagnotta => const [Offset(84, 128), Offset(118, 126), Offset(56, 146), Offset(146, 144)],
+            Pose.dorme => const [Offset(102, 140), Offset(122, 140), Offset(140, 146)],
+          };
+          for (final o in flecks) {
+            c.drawOval(Rect.fromCenter(center: o, width: 8, height: 4.5), p..color = third);
+          }
+        }
       case CoatPattern.calico:
         final spots = switch (pose) {
           Pose.seduto => const [(Offset(150, 146), 27.0, 0), (Offset(54, 178), 19.0, 1)],
@@ -564,6 +653,14 @@ class KittenPainter extends CustomPainter {
         for (final (o, r) in spots) {
           c.drawCircle(o, r, p..color = second);
         }
+      case CoatPattern.panda:
+        // The dark shoulder band.
+        final band = switch (pose) {
+          Pose.seduto => Rect.fromCenter(center: const Offset(100, 118), width: 140, height: 34),
+          Pose.pagnotta => Rect.fromCenter(center: const Offset(100, 128), width: 170, height: 30),
+          Pose.dorme => Rect.fromCenter(center: const Offset(70, 150), width: 40, height: 70),
+        };
+        c.drawRect(band, p..color = second);
       case CoatPattern.tintaUnita:
         break;
     }
@@ -573,7 +670,7 @@ class KittenPainter extends CustomPainter {
   void _tailPattern(Canvas c, Path tail, double w, Coat coat, Color second) {
     final metric = tail.computeMetrics().firstOrNull;
     if (metric == null) return;
-    if (coat.pattern == CoatPattern.tigrato) {
+    if (coat.pattern == CoatPattern.tigrato || coat.pattern == CoatPattern.soriano) {
       final s = Paint()
         ..color = second
         ..style = PaintingStyle.stroke
@@ -639,7 +736,65 @@ class KittenPainter extends CustomPainter {
     );
   }
 
+  /// The chest panel of the space suit (body space).
+  void _suitPanel(Canvas c, Offset o, Color outline, double ow) {
+    final r = RRect.fromRectAndRadius(Rect.fromCenter(center: o, width: 34, height: 22), const Radius.circular(6));
+    c.drawRRect(r, Paint()..color = const Color(0xFFE9EEF3));
+    c.drawRRect(
+      r,
+      Paint()
+        ..color = outline
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = ow * 0.8,
+    );
+    const lights = [Color(0xFFE88A8A), Color(0xFF9DC7EA), Color(0xFFF6D46E)];
+    for (var i = 0; i < 3; i++) {
+      c.drawCircle(o + Offset(-9.0 + i * 9, 0), 3.2, Paint()..color = lights[i]);
+    }
+  }
+
   // --- Accessories (head space) -----------------------------------------------
+
+  /// The parts of neck accessories that go behind the chin.
+  void _neckBack(Canvas c, Accessory acc, Color color, Color outline, double ow) {
+    Paint band(Color col, double w) => Paint()
+      ..color = col
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w
+      ..strokeCap = StrokeCap.round;
+    switch (acc) {
+      case Accessory.campanella:
+        final collar = Path()
+          ..moveTo(58, 120)
+          ..quadraticBezierTo(100, 158, 142, 120);
+        c.drawPath(collar, band(outline, 9 + ow * 2));
+        c.drawPath(collar, band(color, 9));
+      case Accessory.sciarpa:
+        final scarf = Path()
+          ..moveTo(50, 114)
+          ..quadraticBezierTo(100, 152, 150, 114)
+          ..lineTo(153, 128)
+          ..quadraticBezierTo(100, 170, 47, 128)
+          ..close();
+        c.drawPath(scarf, Paint()..color = color);
+        c.drawPath(
+          scarf,
+          Paint()
+            ..color = outline
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = ow * 0.8
+            ..strokeJoin = StrokeJoin.round,
+        );
+        c.drawPath(
+          Path()
+            ..moveTo(52, 122)
+            ..quadraticBezierTo(100, 162, 150, 122),
+          band(const Color(0xFFFFFFFF).withValues(alpha: 0.5), 2.4),
+        );
+      default:
+        break;
+    }
+  }
 
   void _accessory(Canvas c, Accessory acc, Color color, Color outline, double ow, double t) {
     final line = Paint()
@@ -649,16 +804,14 @@ class KittenPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round
       ..strokeCap = StrokeCap.round;
     final f = Paint()..color = color;
-    void both(Path p) {
-      c.drawPath(p, f);
+    void both(Path p, [Paint? fillPaint]) {
+      c.drawPath(p, fillPaint ?? f);
       c.drawPath(p, line);
     }
 
     switch (acc) {
       case Accessory.nessuno:
       case Accessory.mantello:
-        return;
-
       case Accessory.ali:
       case Accessory.aliDrago:
         return;
@@ -705,14 +858,21 @@ class KittenPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 7);
       case Accessory.cornine:
-        for (final (x, dir) in const [(76.0, -1.0), (124.0, 1.0)]) {
-          final horn = Path()
-            ..moveTo(x - 9, 50)
-            ..quadraticBezierTo(x + dir * 2, 28, x + dir * 8, 22)
-            ..quadraticBezierTo(x + dir * 6, 36, x + 9, 48)
-            ..close();
-          both(horn);
-        }
+        // Two little curved horns on the crown, between the ears.
+        final horn = Path()
+          ..moveTo(83, 47)
+          ..quadraticBezierTo(77, 36, 80, 21)
+          ..quadraticBezierTo(89, 30, 97, 44)
+          ..quadraticBezierTo(90, 49, 83, 47)
+          ..close();
+        both(horn);
+        both(horn.transform(_mirror));
+        final shine = Paint()
+          ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.45)
+          ..strokeWidth = 1.8
+          ..strokeCap = StrokeCap.round;
+        c.drawLine(const Offset(84, 38), const Offset(83, 30), shine);
+        c.drawLine(const Offset(116, 38), const Offset(117, 30), shine);
       case Accessory.cappelloChef:
         both(Path()..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(68, 30, 132, 54), const Radius.circular(6))));
         final puff = Path()
@@ -785,17 +945,54 @@ class KittenPainter extends CustomPainter {
         c.drawCircle(o, 7.5, Paint()..color = const Color(0xFF8C6150));
         c.drawCircle(o, 7.5, line);
       case Accessory.casco:
-        final dome = Rect.fromCircle(center: const Offset(100, 86), radius: 76);
-        c.drawOval(dome, Paint()..color = const Color(0x22BFE3F5));
-        c.drawOval(dome, Paint()
-          ..color = const Color(0xFFDDE7EE)
+        // A real space helmet: glass dome, thick rim, neck ring and antenna.
+        const center = Offset(100, 86);
+        const r = 76.0;
+        c.save();
+        c.clipRect(const Rect.fromLTRB(-40, -60, 240, 140));
+        c.drawCircle(
+          center,
+          r,
+          Paint()
+            ..shader = ui.Gradient.radial(
+              center - const Offset(24, 30),
+              r * 1.2,
+              [const Color(0x40DDF1FB), const Color(0x1FA9D3EA)],
+            ),
+        );
+        c.drawCircle(center, r, Paint()
+          ..color = outline
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 5);
-        c.drawArc(dome.deflate(12), 3.6, 0.9, false, Paint()
-          ..color = const Color(0xCCFFFFFF)
+          ..strokeWidth = 9 + ow * 2);
+        c.drawCircle(center, r, Paint()
+          ..color = const Color(0xFFF1F4F8)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 9);
+        c.restore();
+        c.drawArc(Rect.fromCircle(center: center, radius: r - 13), 3.55, 0.8, false, Paint()
+          ..color = const Color(0xDDFFFFFF)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 5
           ..strokeCap = StrokeCap.round);
+        c.drawCircle(center + const Offset(-50, -30), 3.2, Paint()..color = const Color(0xCCFFFFFF));
+        // Antenna on the rim.
+        c.drawLine(const Offset(136, 22), const Offset(146, 2), Paint()
+          ..color = outline
+          ..strokeWidth = 3.4 + ow
+          ..strokeCap = StrokeCap.round);
+        c.drawLine(const Offset(136, 22), const Offset(146, 2), Paint()
+          ..color = const Color(0xFFD5DDE5)
+          ..strokeWidth = 3.4
+          ..strokeCap = StrokeCap.round);
+        final glow = 0.6 + 0.4 * math.sin(t * 3);
+        c.drawCircle(const Offset(146, 1), 5, Paint()..color = const Color(0xFFE88A8A).withValues(alpha: glow));
+        c.drawCircle(const Offset(146, 1), 5, line);
+        // Neck ring.
+        final ring = RRect.fromRectAndRadius(Rect.fromCenter(center: const Offset(100, 144), width: 118, height: 18), const Radius.circular(9));
+        both(Path()..addRRect(ring), Paint()..color = const Color(0xFFE9EEF3));
+        for (final x in const [64.0, 100.0, 136.0]) {
+          c.drawCircle(Offset(x, 144), 2.6, Paint()..color = const Color(0xFFB7C3CE));
+        }
       case Accessory.fiocco:
         c.save();
         c.translate(136, 50);
@@ -813,64 +1010,36 @@ class KittenPainter extends CustomPainter {
         both(Path()..addOval(Rect.fromCircle(center: Offset.zero, radius: 4.6)));
         c.restore();
       case Accessory.sciarpa:
-        final band = Path()
-          ..moveTo(54, 117)
-          ..quadraticBezierTo(100, 142, 146, 117)
-          ..lineTo(148, 130)
-          ..quadraticBezierTo(100, 158, 52, 130)
-          ..close();
+        // The band is behind the chin (see _neckBack); the loose end hangs in front.
         final flutter = skin.has(Effect.sciarpaVento) ? math.sin(t * 3.2) * 0.22 : 0.0;
         c.save();
-        c.translate(128, 132);
+        c.translate(126, 140);
         c.rotate(0.12 + flutter);
-        final end = Path()
-          ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-7, -2, 15, 34), const Radius.circular(5)));
-        both(end);
+        both(Path()..addRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-7, -2, 15, 32), const Radius.circular(5))));
         final fringe = Paint()
           ..color = outline
           ..strokeWidth = ow * 0.55
           ..strokeCap = StrokeCap.round;
         for (final x in const [-3.0, 0.5, 4.0]) {
-          c.drawLine(Offset(x, 32), Offset(x, 37), fringe);
+          c.drawLine(Offset(x, 30), Offset(x, 35), fringe);
         }
         c.restore();
-        both(band);
-        final stripe = Paint()
-          ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.55)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.4;
-        c.drawPath(
-          Path()
-            ..moveTo(58, 124)
-            ..quadraticBezierTo(100, 148, 142, 124),
-          stripe,
-        );
       case Accessory.campanella:
-        c.drawPath(
-          Path()
-            ..moveTo(60, 121)
-            ..quadraticBezierTo(100, 141, 140, 121),
-          Paint()
-            ..color = outline
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 8 + ow
-            ..strokeCap = StrokeCap.round,
-        );
-        c.drawPath(
-          Path()
-            ..moveTo(60, 121)
-            ..quadraticBezierTo(100, 141, 140, 121),
-          Paint()
-            ..color = color
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 8
-            ..strokeCap = StrokeCap.round,
-        );
-        final bell = Path()..addOval(Rect.fromCircle(center: const Offset(100, 138), radius: 8));
+        final bell = Path()..addOval(Rect.fromCircle(center: const Offset(100, 147), radius: 8));
         c.drawPath(bell, Paint()..color = _gold);
         c.drawPath(bell, line);
-        c.drawLine(const Offset(100, 140), const Offset(100, 145), line);
-        c.drawCircle(const Offset(97.5, 135.5), 1.8, Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: 0.8));
+        c.drawLine(const Offset(100, 149), const Offset(100, 154), line);
+        c.drawCircle(const Offset(97.5, 144.5), 1.8, Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: 0.8));
+      case Accessory.papillon:
+        final wing = Path()
+          ..moveTo(100, 140)
+          ..quadraticBezierTo(90, 128, 81, 131)
+          ..quadraticBezierTo(76, 140, 81, 149)
+          ..quadraticBezierTo(90, 152, 100, 140)
+          ..close();
+        both(wing);
+        both(wing.transform(_mirror));
+        both(Path()..addRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: const Offset(100, 140), width: 9, height: 11), const Radius.circular(3))));
       case Accessory.cuffie:
         final bandPath = Path()
           ..moveTo(42, 92)
@@ -899,20 +1068,20 @@ class KittenPainter extends CustomPainter {
             )));
         }
       case Accessory.berretto:
-        final hat = Path()
-          ..moveTo(50, 70)
-          ..cubicTo(48, 28, 152, 28, 150, 70)
-          ..close();
-        both(hat);
+        // A snug beanie on the crown; the ears stay out on both sides.
         both(Path()
-          ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(46, 62, 154, 76), const Radius.circular(7))));
+          ..moveTo(62, 56)
+          ..cubicTo(60, 22, 140, 22, 138, 56)
+          ..close());
+        final cuff = RRect.fromRectAndRadius(const Rect.fromLTRB(58, 48, 142, 61), const Radius.circular(6.5));
+        both(Path()..addRRect(cuff));
         final rib = Paint()
-          ..color = outline.withValues(alpha: 0.35)
-          ..strokeWidth = 1.6;
-        for (var x = 58.0; x < 150; x += 10) {
-          c.drawLine(Offset(x, 64.5), Offset(x, 73.5), rib);
+          ..color = outline.withValues(alpha: 0.3)
+          ..strokeWidth = 1.5;
+        for (var x = 66.0; x < 138; x += 9) {
+          c.drawLine(Offset(x, 51), Offset(x, 58), rib);
         }
-        both(Path()..addOval(Rect.fromCircle(center: const Offset(100, 32), radius: 9)));
+        both(Path()..addOval(Rect.fromCircle(center: const Offset(100, 26), radius: 7)));
       case Accessory.basco:
         c.save();
         c.translate(112, 48);
@@ -981,19 +1150,38 @@ class KittenPainter extends CustomPainter {
           ..lineTo(118, 28)
           ..lineTo(120, 50)
           ..close();
-        c.drawPath(crown, Paint()..color = color);
-        c.drawPath(crown, line);
+        both(crown);
         c.drawCircle(const Offset(100, 42), 3, Paint()..color = const Color(0xFFE88AA6));
         c.drawCircle(const Offset(88, 44), 2.2, Paint()..color = const Color(0xFF9DC7EA));
         c.drawCircle(const Offset(112, 44), 2.2, Paint()..color = const Color(0xFF9DC7EA));
+      case Accessory.tiara:
+        final tiara = Path()
+          ..moveTo(74, 52)
+          ..quadraticBezierTo(80, 46, 84, 44)
+          ..lineTo(88, 38)
+          ..lineTo(92, 42)
+          ..lineTo(100, 28)
+          ..lineTo(108, 42)
+          ..lineTo(112, 38)
+          ..lineTo(116, 44)
+          ..quadraticBezierTo(120, 46, 126, 52)
+          ..quadraticBezierTo(100, 44, 74, 52)
+          ..close();
+        both(tiara);
+        for (final o in const [Offset(88, 37), Offset(112, 37)]) {
+          c.drawCircle(o, 2.8, Paint()..color = const Color(0xFFFFFFFF));
+          c.drawCircle(o, 2.8, line);
+        }
+        c.drawCircle(const Offset(100, 27), 3.4, Paint()..color = const Color(0xFFFFFFFF));
+        c.drawCircle(const Offset(100, 27), 3.4, line);
+        c.drawCircle(const Offset(100, 44), 3.2, Paint()..color = const Color(0xFFE88AA6));
       case Accessory.lunaFermaglio:
         final moon = Path.combine(
           PathOperation.difference,
           Path()..addOval(Rect.fromCircle(center: const Offset(138, 52), radius: 11)),
           Path()..addOval(Rect.fromCircle(center: const Offset(144, 47), radius: 9.5)),
         );
-        c.drawPath(moon, Paint()..color = color);
-        c.drawPath(moon, line);
+        both(moon);
       case Accessory.coronaFoglie:
         const spots = [
           (Offset(56, 62), -1.0),
@@ -1009,10 +1197,122 @@ class KittenPainter extends CustomPainter {
           c.translate(spots[i].$1.dx, spots[i].$1.dy);
           c.rotate(spots[i].$2 * 0.9 + (i.isEven ? -0.55 : 0.55));
           final leaf = Path()..addOval(Rect.fromCenter(center: Offset.zero, width: 19, height: 9.5));
-          c.drawPath(leaf, Paint()..color = i.isEven ? color : Color.lerp(color, const Color(0xFFFFFFFF), 0.35)!);
-          c.drawPath(leaf, line);
+          both(leaf, Paint()..color = i.isEven ? color : Color.lerp(color, const Color(0xFFFFFFFF), 0.35)!);
           c.restore();
         }
+      case Accessory.antennine:
+        for (final side in const [-1.0, 1.0]) {
+          final stalk = Path()
+            ..moveTo(100 + side * 11, 45)
+            ..quadraticBezierTo(100 + side * 10, 26, 100 + side * 24, 12);
+          c.drawPath(stalk, Paint()
+            ..color = color
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 3.2
+            ..strokeCap = StrokeCap.round);
+          final tip = Offset(100 + side * 24, 12 + math.sin(t * 2.4 + side) * 1.5);
+          c.drawCircle(tip, 5.5, Paint()..color = color);
+          c.drawCircle(tip + const Offset(-1.6, -1.6), 1.6, Paint()..color = const Color(0x99FFFFFF));
+        }
+      case Accessory.cappuccioRana:
+        final outer = Path.combine(
+          PathOperation.union,
+          Path()..addOval(Rect.fromCenter(center: const Offset(100, 76), width: 146, height: 122)),
+          Path()
+            ..addOval(Rect.fromCircle(center: const Offset(64, 26), radius: 18))
+            ..addOval(Rect.fromCircle(center: const Offset(136, 26), radius: 18)),
+        );
+        final hood = Path.combine(
+          PathOperation.difference,
+          outer,
+          Path()..addOval(Rect.fromCenter(center: const Offset(100, 101), width: 104, height: 70)),
+        );
+        both(hood);
+        for (final x in const [64.0, 136.0]) {
+          c.drawCircle(Offset(x, 25), 10, Paint()..color = const Color(0xFFFFFAF3));
+          c.drawCircle(Offset(x, 25), 10, line);
+          c.drawCircle(Offset(x + 1.5, 26), 5, Paint()..color = const Color(0xFF3B2925));
+          c.drawCircle(Offset(x + 3, 24), 1.6, Paint()..color = const Color(0xFFFFFFFF));
+        }
+        c.drawCircle(const Offset(50, 90), 4, Paint()..color = const Color(0xFFF49C9C).withValues(alpha: 0.7));
+        c.drawCircle(const Offset(150, 90), 4, Paint()..color = const Color(0xFFF49C9C).withValues(alpha: 0.7));
+      case Accessory.cappelloCowboy:
+        both(Path()..addOval(Rect.fromCenter(center: const Offset(100, 44), width: 128, height: 22)));
+        final crown = Path()
+          ..moveTo(76, 46)
+          ..lineTo(79, 16)
+          ..quadraticBezierTo(90, 9, 100, 17)
+          ..quadraticBezierTo(110, 9, 121, 16)
+          ..lineTo(124, 46)
+          ..quadraticBezierTo(100, 51, 76, 46)
+          ..close();
+        both(crown);
+        final band = Path()
+          ..moveTo(77.5, 34)
+          ..quadraticBezierTo(100, 39, 122.5, 34)
+          ..lineTo(123.2, 41)
+          ..quadraticBezierTo(100, 46, 76.8, 41)
+          ..close();
+        c.drawPath(band, Paint()..color = Color.lerp(color, const Color(0xFF5A3E36), 0.45)!);
+      case Accessory.cappelloFragola:
+        final berry = Path()
+          ..moveTo(66, 54)
+          ..cubicTo(60, 24, 84, 12, 100, 12)
+          ..cubicTo(116, 12, 140, 24, 134, 54)
+          ..quadraticBezierTo(100, 62, 66, 54)
+          ..close();
+        both(berry);
+        for (final o in const [Offset(82, 30), Offset(100, 24), Offset(118, 30), Offset(76, 44), Offset(92, 40), Offset(108, 40), Offset(124, 44)]) {
+          c.drawOval(Rect.fromCenter(center: o, width: 3, height: 4.5), Paint()..color = const Color(0xFFFFF1B8));
+        }
+        for (var k = 0; k < 5; k++) {
+          c.save();
+          c.translate(100, 13);
+          c.rotate(-math.pi / 2 + (k - 2) * 0.62);
+          both(Path()..addOval(Rect.fromCenter(center: const Offset(8, 0), width: 16, height: 7)), Paint()..color = const Color(0xFF8FC98A));
+          c.restore();
+        }
+        c.drawLine(const Offset(100, 10), const Offset(102, 0), line..strokeWidth = ow * 1.1);
+      case Accessory.ciliegie:
+        final stem = Paint()
+          ..color = const Color(0xFF6E9B5E)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.4
+          ..strokeCap = StrokeCap.round;
+        c.drawPath(Path()
+          ..moveTo(130, 58)
+          ..quadraticBezierTo(132, 44, 140, 38), stem);
+        c.drawPath(Path()
+          ..moveTo(144, 60)
+          ..quadraticBezierTo(142, 46, 140, 38), stem);
+        c.save();
+        c.translate(146, 38);
+        c.rotate(-0.4);
+        both(Path()..addOval(Rect.fromCenter(center: Offset.zero, width: 13, height: 7)), Paint()..color = const Color(0xFF8FC98A));
+        c.restore();
+        for (final o in const [Offset(130, 60), Offset(144, 62)]) {
+          both(Path()..addOval(Rect.fromCircle(center: o, radius: 6.5)));
+          c.drawCircle(o + const Offset(-2, -2), 1.7, Paint()..color = const Color(0xBBFFFFFF));
+        }
+      case Accessory.cornoUnicorno:
+        final horn = Path()
+          ..moveTo(92, 46)
+          ..lineTo(100, 2)
+          ..lineTo(108, 46)
+          ..quadraticBezierTo(100, 50, 92, 46)
+          ..close();
+        c.drawPath(horn, f);
+        c.save();
+        c.clipPath(horn);
+        final swirl = Paint()
+          ..color = const Color(0xFFFFF6D8)
+          ..strokeWidth = 2.6;
+        for (var i = 0; i < 4; i++) {
+          final y = 40.0 - i * 10;
+          c.drawLine(Offset(88, y), Offset(112, y - 7), swirl);
+        }
+        c.restore();
+        c.drawPath(horn, line);
     }
   }
 
@@ -1084,6 +1384,25 @@ class KittenPainter extends CustomPainter {
             Rect.fromCenter(center: Offset.zero, width: 9, height: 6),
             Paint()..color = const Color(0xFFF7B8CC).withValues(alpha: 0.9),
           );
+          c.restore();
+        }
+      case Effect.foglie:
+        const cols = [Color(0xFFE59A5B), Color(0xFFD9744F), Color(0xFFE9C46A), Color(0xFFB9825C)];
+        for (var i = 0; i < 5; i++) {
+          final y = (t * 15 + i * 43) % 214 - 12;
+          final x = 22.0 + i * 38 + math.sin(t * 1.1 + i * 1.7) * 12;
+          c.save();
+          c.translate(x, y);
+          c.rotate(math.sin(t * 1.6 + i) * 0.9 + i);
+          final leaf = Path()
+            ..moveTo(-7, 0)
+            ..quadraticBezierTo(0, -6, 7, 0)
+            ..quadraticBezierTo(0, 6, -7, 0)
+            ..close();
+          c.drawPath(leaf, Paint()..color = cols[i % cols.length].withValues(alpha: 0.92));
+          c.drawLine(const Offset(-6, 0), const Offset(6, 0), Paint()
+            ..color = const Color(0x55000000)
+            ..strokeWidth = 0.8);
           c.restore();
         }
       case Effect.lucciole:
@@ -1204,6 +1523,59 @@ class KittenPainter extends CustomPainter {
           c.drawCircle(o, 9, Paint()..color = const Color(0xFF9FE3D0).withValues(alpha: 0.15 * a));
           c.drawCircle(o, 4.2, Paint()..color = const Color(0xFFBDF0E1).withValues(alpha: 0.85 * a));
         }
+      case Effect.pioggia:
+        // A small cloud of its own, drizzling beside the kitten.
+        final cloudY = 14 + math.sin(t * 1.2) * 2;
+        for (var i = 0; i < 4; i++) {
+          final p = (t * 0.9 + i / 4) % 1.0;
+          final o = Offset(148.0 + (i - 1.5) * 10, cloudY + 14 + p * 62);
+          c.drawLine(o, o + const Offset(-1.5, 7), Paint()
+            ..color = const Color(0xFF8FC3DE).withValues(alpha: 0.9 * (1 - p))
+            ..strokeWidth = 2.6
+            ..strokeCap = StrokeCap.round);
+        }
+        final cloud = Path()
+          ..addOval(Rect.fromCircle(center: Offset(136, cloudY + 4), radius: 9))
+          ..addOval(Rect.fromCircle(center: Offset(149, cloudY - 2), radius: 12))
+          ..addOval(Rect.fromCircle(center: Offset(162, cloudY + 4), radius: 9))
+          ..addRRect(RRect.fromRectAndRadius(Rect.fromLTRB(128, cloudY, 170, cloudY + 13), const Radius.circular(6.5)));
+        c.drawPath(cloud, Paint()
+          ..color = const Color(0xFFB8C6D6)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3);
+        c.drawPath(cloud, Paint()..color = const Color(0xFFF4F7FB));
+      case Effect.fulmini:
+        const spots = [Offset(28, 58), Offset(172, 76), Offset(30, 140)];
+        for (var i = 0; i < spots.length; i++) {
+          final k = (t * 0.55 + i * 0.37) % 1.0;
+          if (k > 0.22) continue;
+          final a = math.sin(k / 0.22 * math.pi);
+          final o = spots[i];
+          final bolt = Path()
+            ..moveTo(o.dx + 2, o.dy - 12)
+            ..lineTo(o.dx - 5, o.dy + 1)
+            ..lineTo(o.dx + 1, o.dy + 1)
+            ..lineTo(o.dx - 3, o.dy + 13)
+            ..lineTo(o.dx + 7, o.dy - 3)
+            ..lineTo(o.dx + 1, o.dy - 3)
+            ..lineTo(o.dx + 5, o.dy - 12)
+            ..close();
+          c.drawPath(bolt, Paint()..color = const Color(0xFFF6D46E).withValues(alpha: a));
+          c.drawPath(bolt, Paint()
+            ..color = const Color(0xFFD9A93A).withValues(alpha: a)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4
+            ..strokeJoin = StrokeJoin.round);
+        }
+      case Effect.braci:
+        for (var i = 0; i < 7; i++) {
+          final p = (t * 0.28 + i / 7) % 1.0;
+          final o = Offset(24.0 + i * 25 + math.sin(t * 1.8 + i * 1.3) * 8, 192 - p * 180);
+          final a = math.sin(p * math.pi) * (0.6 + 0.4 * math.sin(t * 9 + i));
+          final col = i.isEven ? const Color(0xFFF4A261) : const Color(0xFFF6D46E);
+          c.drawCircle(o, 5.5, Paint()..color = col.withValues(alpha: 0.18 * a));
+          c.drawCircle(o, 2.2 + (i % 3) * 0.6, Paint()..color = col.withValues(alpha: a));
+        }
       default:
         break;
     }
@@ -1299,28 +1671,9 @@ class KittenPainter extends CustomPainter {
     }
   }
 
-  void _paw(Canvas c, Offset p, Color outline, Color pawColor, {double w = 20, double h = 16}) {
-    final r = Rect.fromCenter(center: p, width: w, height: h);
-    c.drawOval(
-      r,
-      Paint()
-        ..color = outline
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 6.8,
-    );
-    c.drawOval(r, Paint()..color = pawColor);
-  }
-
-  /// The props of a random scene: a fly, a bottle, a butterfly, yarn...
-  void _actionProps(
-    Canvas c,
-    KittenAction act,
-    double ap,
-    Color outline,
-    Color pawColor,
-    double t,
-    double Function(double, double) win,
-  ) {
+  /// Floor props of a scene, in body space: a bottle to knock over on the
+  /// left, a ball of yarn rolling in from the right.
+  void _floorProps(Canvas c, KittenAction act, double ap, double Function(double, double) ramp, Color outline) {
     final line = Paint()
       ..color = outline
       ..style = PaintingStyle.stroke
@@ -1328,40 +1681,77 @@ class KittenPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round
       ..strokeCap = StrokeCap.round;
     switch (act) {
-      case KittenAction.none:
-      case KittenAction.sbadiglio:
-        return;
+      case KittenAction.bottiglia:
+        final alpha = ramp(0, 0.1) * (1 - ramp(0.84, 1));
+        final tip = Curves.bounceOut.transform(((ap - 0.36) / 0.22).clamp(0.0, 1.0));
+        c.save();
+        c.translate(26, 192);
+        c.rotate(-tip * math.pi / 2);
+        final body = RRect.fromRectAndRadius(const Rect.fromLTWH(0, -26, 14, 26), const Radius.circular(5));
+        c.drawRRect(body, Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: alpha));
+        c.drawRect(const Rect.fromLTWH(0, -16, 14, 6), Paint()..color = const Color(0xFF9DC7EA).withValues(alpha: alpha));
+        c.drawRRect(body, line..color = outline.withValues(alpha: alpha));
+        final cap = RRect.fromRectAndRadius(const Rect.fromLTWH(3, -32, 8, 6), const Radius.circular(2));
+        c.drawRRect(cap, Paint()..color = const Color(0xFF7F93C9).withValues(alpha: alpha));
+        c.drawRRect(cap, line);
+        c.restore();
+      case KittenAction.gomitolo:
+        final double x;
+        if (ap < 0.3) {
+          x = 214 - 52 * Curves.easeOut.transform(ap / 0.3);
+        } else if (ap < 0.44) {
+          x = 162;
+        } else {
+          x = 162 + 56 * Curves.easeIn.transform(((ap - 0.44) / 0.4).clamp(0.0, 1.0));
+        }
+        final alpha = ramp(0, 0.1) * (1 - ramp(0.72, 0.86));
+        c.save();
+        c.translate(x, 181);
+        c.rotate(x / 11);
+        final ball = Rect.fromCircle(center: Offset.zero, radius: 11);
+        c.drawOval(ball, Paint()..color = const Color(0xFFF29FB5).withValues(alpha: alpha));
+        final thread = Paint()
+          ..color = const Color(0xFFD9738F).withValues(alpha: alpha)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6;
+        c.drawArc(ball.deflate(3), 0.2, 2.4, false, thread);
+        c.drawArc(ball.deflate(5), 3.4, 2.2, false, thread);
+        c.drawLine(const Offset(-8, 4), const Offset(7, -6), thread);
+        c.drawOval(ball, line..color = outline.withValues(alpha: alpha)..strokeWidth = 2.2);
+        c.restore();
+      default:
+        break;
+    }
+  }
+
+  /// Props of a scene that live around the head: a fly, a butterfly, a sneeze.
+  void _headProps(
+    Canvas c,
+    KittenAction act,
+    double ap,
+    double Function(double, double) ramp,
+    double Function(double, double) win,
+    Color outline,
+    double t,
+  ) {
+    final line = Paint()
+      ..color = outline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    switch (act) {
       case KittenAction.mosca:
-        final o = Offset(100 - math.cos(ap * math.pi * 2.2) * 75, 58 + math.sin(ap * math.pi * 6) * 14);
-        final a = (math.min(ap, 1 - ap) * 8).clamp(0.0, 1.0);
+        final o = Offset(100 - math.cos(ap * math.pi * 2.2) * 92, 24 + math.sin(ap * math.pi * 6) * 12);
+        final a = ramp(0, 0.1) * (1 - ramp(0.9, 1));
         final flap = math.sin(t * 60) * 0.5 + 0.5;
         final wing = Paint()..color = const Color(0xFFD9ECF7).withValues(alpha: 0.9 * a);
         c.drawOval(Rect.fromCenter(center: o + const Offset(-2, -3), width: 6, height: 4 + flap * 3), wing);
         c.drawOval(Rect.fromCenter(center: o + const Offset(2, -3), width: 6, height: 4 + flap * 3), wing);
         c.drawCircle(o, 3, Paint()..color = const Color(0xFF3B3236).withValues(alpha: a));
-      case KittenAction.bottiglia:
-        final rise = (ap / 0.2).clamp(0.0, 1.0);
-        final tip = ((ap - 0.45) / 0.25).clamp(0.0, 1.0);
-        final alpha = 1 - ((ap - 0.8) / 0.2).clamp(0.0, 1.0);
-        final base = Offset(170, 206 - 30 * Curves.easeOutBack.transform(rise));
-        c.save();
-        c.translate(base.dx + 8, base.dy);
-        c.rotate(Curves.bounceOut.transform(tip) * math.pi / 2);
-        c.translate(-8, 0);
-        final body = RRect.fromRectAndRadius(const Rect.fromLTWH(-8, -30, 16, 30), const Radius.circular(6));
-        c.drawRRect(body, Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: alpha));
-        c.drawRect(const Rect.fromLTWH(-8, -18, 16, 7), Paint()..color = const Color(0xFF9DC7EA).withValues(alpha: alpha));
-        c.drawRRect(body, line..color = outline.withValues(alpha: alpha));
-        final cap = RRect.fromRectAndRadius(const Rect.fromLTWH(-5, -37, 10, 7), const Radius.circular(2));
-        c.drawRRect(cap, Paint()..color = const Color(0xFF7F93C9).withValues(alpha: alpha));
-        c.drawRRect(cap, line);
-        c.restore();
-        final reach = win(0.22, 0.55);
-        if (reach > 0) {
-          _paw(c, Offset.lerp(const Offset(138, 168), const Offset(160, 158), reach)!, outline, pawColor);
-        }
       case KittenAction.farfalla:
         final o = _butterfly(ap);
+        final a = ramp(0, 0.08) * (1 - ramp(0.92, 1));
         final resting = ap > 0.3 && ap < 0.7;
         final flap = resting ? (math.sin(t * 4) * 0.5 + 0.5) * 0.6 + 0.2 : math.sin(t * 22) * 0.5 + 0.5;
         for (final side in const [-1.0, 1.0]) {
@@ -1371,47 +1761,21 @@ class KittenPainter extends CustomPainter {
           final w = Path()
             ..addOval(Rect.fromCenter(center: const Offset(6, -4), width: 12, height: 10))
             ..addOval(Rect.fromCenter(center: const Offset(5, 5), width: 8, height: 8));
-          c.drawPath(w, Paint()..color = const Color(0xFFF7B8CC));
-          c.drawPath(w, line..strokeWidth = 1.6);
+          c.drawPath(w, Paint()..color = const Color(0xFFF7B8CC).withValues(alpha: a));
+          c.drawPath(w, line..color = outline.withValues(alpha: a)..strokeWidth = 1.6);
           c.restore();
         }
         c.drawLine(o + const Offset(0, -6), o + const Offset(0, 6), line..strokeWidth = 2.4);
-      case KittenAction.gomitolo:
-        final double x;
-        if (ap < 0.3) {
-          x = -24 + 82 * Curves.easeOut.transform(ap / 0.3);
-        } else if (ap < 0.55) {
-          x = 58;
-        } else {
-          x = 58 - 100 * Curves.easeIn.transform((ap - 0.55) / 0.45);
-        }
-        final boop = win(0.38, 0.55) * 12;
-        c.save();
-        c.translate(x, 180 - boop);
-        c.rotate(x / 11);
-        final ball = Rect.fromCircle(center: Offset.zero, radius: 11);
-        c.drawOval(ball, Paint()..color = const Color(0xFFF29FB5));
-        final thread = Paint()
-          ..color = const Color(0xFFD9738F)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.6;
-        c.drawArc(ball.deflate(3), 0.2, 2.4, false, thread);
-        c.drawArc(ball.deflate(5), 3.4, 2.2, false, thread);
-        c.drawLine(const Offset(-8, 4), const Offset(7, -6), thread);
-        c.drawOval(ball, line..strokeWidth = 2.2);
-        c.restore();
-        final paw = win(0.36, 0.52);
-        if (paw > 0) {
-          _paw(c, Offset.lerp(const Offset(72, 178), const Offset(64, 176), paw)!, outline, pawColor, w: 18, h: 14);
-        }
       case KittenAction.starnuto:
         final puff = win(0.35, 0.8);
         if (puff > 0) {
           for (var i = 0; i < 3; i++) {
-            final o = Offset(118 + i * 7 + puff * 10, 108 - i * 5 + (i == 1 ? 2 : 0));
+            final o = Offset(112 + i * 7 + puff * 10, 104 - i * 5 + (i == 1 ? 2 : 0));
             c.drawCircle(o, 2 + puff * 2.5, Paint()..color = const Color(0xFFE3EAF0).withValues(alpha: puff));
           }
         }
+      default:
+        break;
     }
   }
 
@@ -1422,15 +1786,15 @@ class KittenPainter extends CustomPainter {
 
 double _lerp(double a, double b, double t) => a + (b - a) * t;
 
-/// Butterfly flight: flutters in, rests on the head, flies off.
+/// Butterfly flight in head space: flutters in, rests on the head, flies off.
 Offset _butterfly(double p) {
   if (p < 0.3) {
     final k = p / 0.3;
-    return Offset(_lerp(10, 100, k), _lerp(40, 30, k) + math.sin(k * math.pi * 3) * 10);
+    return Offset(_lerp(-30, 100, k), _lerp(10, 33, k) + math.sin(k * math.pi * 3) * 10);
   }
-  if (p < 0.7) return const Offset(100, 30);
+  if (p < 0.7) return const Offset(100, 33);
   final k = (p - 0.7) / 0.3;
-  return Offset(_lerp(100, 196, k), _lerp(30, -10, k) + math.sin(k * math.pi * 3) * 8);
+  return Offset(_lerp(100, 230, k), _lerp(33, -20, k) + math.sin(k * math.pi * 3) * 8);
 }
 
 /// Pose layouts in design space (adult proportions).

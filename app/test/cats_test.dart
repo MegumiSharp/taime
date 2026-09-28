@@ -86,8 +86,8 @@ void main() {
     expect(Tracker.pomoBreakMinutes(s, [for (var i = 0; i < 5; i++) work(i)]), 5);
   });
 
-  test('52 skins, every legendary has a visible effect', () {
-    expect(kSkins.length, 52);
+  test('69 skins, every legendary has a visible effect', () {
+    expect(kSkins.length, 69);
     for (final s in kSkins.where((s) => s.rarity == Rarity.leggendario)) {
       expect(s.effect != Effect.nessuno || s.effect2 != Effect.nessuno, isTrue, reason: s.id);
     }

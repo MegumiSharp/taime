@@ -44,9 +44,9 @@ int goalStreak(Map<DateTime, double> perDay, double goalMinutes, DateTime now) {
   return n;
 }
 
-/// Today's progress toward the daily goal, and the streak.
-class GoalCard extends StatelessWidget {
-  const GoalCard({super.key, required this.goalMinutes, this.now});
+/// Today at a glance: hours per activity, the daily goal and the streak.
+class TodayCard extends StatelessWidget {
+  const TodayCard({super.key, required this.goalMinutes, this.now});
   final int goalMinutes;
   final DateTime? now;
 
@@ -55,69 +55,136 @@ class GoalCard extends StatelessWidget {
     final tc = context.tc;
     final n = now ?? DateTime.now();
     final today = DateTime(n.year, n.month, n.day);
+    final tomorrow = DateTime(today.year, today.month, today.day + 1);
     final from = DateTime(today.year, today.month, today.day - 400);
-    final to = DateTime(today.year, today.month, today.day + 1);
-    return StreamBuilder<List<Segment>>(
-      stream: db.watchSegmentsBetween(from, to),
-      builder: (context, snap) {
-        final perDay = minutesPerDay(snap.data ?? const [], from, to, now: n);
-        final done = perDay[today] ?? 0;
-        final k = (done / goalMinutes).clamp(0.0, 1.0);
-        final streak = goalStreak(perDay, goalMinutes.toDouble(), n);
-        final reached = done >= goalMinutes;
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: tc.surface.withValues(alpha: tc.dark ? 0.6 : 0.75),
-            borderRadius: BorderRadius.circular(kRadius),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(reached ? Icons.emoji_events_rounded : Icons.flag_rounded, size: 18, color: tc.accent),
-                  const SizedBox(width: 6),
-                  Text(reached ? 'Obiettivo raggiunto!' : 'Obiettivo di oggi',
-                      style: Theme.of(context).textTheme.titleSmall),
-                  const Spacer(),
-                  if (streak > 0)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: tc.pauseSoft, borderRadius: BorderRadius.circular(14)),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.local_fire_department_rounded, size: 15, color: tc.pause),
-                          const SizedBox(width: 3),
-                          Text(streak == 1 ? '1 giorno' : '$streak giorni di fila',
-                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: tc.text)),
-                        ],
+    return StreamBuilder<List<Activity>>(
+      stream: db.watchActivities(includeArchived: true),
+      builder: (context, aSnap) {
+        final acts = {for (final a in aSnap.data ?? const <Activity>[]) a.id: a};
+        return StreamBuilder<List<({Segment segment, int activityId})>>(
+          stream: db.watchRange(today, tomorrow),
+          builder: (context, tSnap) => StreamBuilder<List<Segment>>(
+            stream: db.watchSegmentsBetween(from, tomorrow),
+            builder: (context, snap) {
+              final perActivity = <int, double>{};
+              for (final r in tSnap.data ?? const <({Segment segment, int activityId})>[]) {
+                final m = minutesPerDay([r.segment], today, tomorrow, now: n)[today] ?? 0;
+                if (m > 0) perActivity[r.activityId] = (perActivity[r.activityId] ?? 0) + m;
+              }
+              final sorted = perActivity.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+              final done = perActivity.values.fold(0.0, (a, b) => a + b);
+              final perDay = minutesPerDay(snap.data ?? const [], from, tomorrow, now: n);
+              final streak = goalStreak(perDay, goalMinutes.toDouble(), n);
+              final reached = goalMinutes > 0 && done >= goalMinutes;
+              Color colorOf(int id) => activityColor(acts[id]?.color ?? 0xFF93C4A0, dark: tc.dark);
+              // The bar is the goal (or the day's total when there is none).
+              final whole = goalMinutes > 0 && done < goalMinutes ? goalMinutes.toDouble() : done;
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: tc.surface.withValues(alpha: tc.dark ? 0.6 : 0.75),
+                  borderRadius: BorderRadius.circular(kRadius),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('Oggi', style: Theme.of(context).textTheme.titleSmall),
+                        const SizedBox(width: 10),
+                        Text(
+                          fmtHm(Duration(minutes: done.floor())),
+                          style: timerStyle(context, size: 26).copyWith(fontWeight: FontWeight.w400, height: 1),
+                        ),
+                        if (goalMinutes > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 6, bottom: 2),
+                            child: Text(
+                              '/ ${fmtHm(Duration(minutes: goalMinutes))}',
+                              style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600, fontSize: 13),
+                            ),
+                          ),
+                        const Spacer(),
+                        if (streak > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(color: tc.pauseSoft, borderRadius: BorderRadius.circular(14)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.local_fire_department_rounded, size: 15, color: tc.pause),
+                                const SizedBox(width: 3),
+                                Text(
+                                  streak == 1 ? '1 giorno' : '$streak giorni',
+                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: tc.text),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (reached)
+                          Icon(Icons.emoji_events_rounded, size: 20, color: tc.accent),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        height: 12,
+                        color: tc.raised,
+                        child: LayoutBuilder(
+                          builder: (context, box) => Row(
+                            children: [
+                              for (final e in sorted)
+                                AnimatedContainer(
+                                  duration: Motion.of(context, Motion.slow),
+                                  curve: Motion.curve,
+                                  width: whole <= 0 ? 0 : box.maxWidth * e.value / whole,
+                                  color: colorOf(e.key),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: k),
-                  duration: Motion.of(context, Motion.slower),
-                  curve: Motion.curve,
-                  builder: (context, v, _) => LinearProgressIndicator(
-                    value: v,
-                    minHeight: 12,
-                    color: tc.accent,
-                    backgroundColor: tc.raised,
-                  ),
+                    const SizedBox(height: 10),
+                    if (sorted.isEmpty)
+                      Text(
+                        goalMinutes > 0 ? 'Ancora niente oggi: il primo focus ti avvicina all\'obiettivo.' : 'Ancora niente oggi.',
+                        style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600, fontSize: 13),
+                      )
+                    else
+                      Wrap(
+                        spacing: 14,
+                        runSpacing: 6,
+                        children: [
+                          for (final e in sorted)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 9,
+                                  height: 9,
+                                  decoration: BoxDecoration(color: colorOf(e.key), shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  acts[e.key]?.name ?? 'Attività',
+                                  style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600, fontSize: 13),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  fmtHm(Duration(minutes: e.value.floor())),
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${fmtHm(Duration(minutes: done.round()))} di ${fmtHm(Duration(minutes: goalMinutes))}',
-                style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600, fontSize: 13),
-              ),
-            ],
+              );
+            },
           ),
         );
       },

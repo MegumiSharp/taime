@@ -10,6 +10,7 @@ import 'app.dart';
 import 'backup.dart';
 import 'db.dart';
 import 'kitten/art.dart';
+import 'kitten/skins.dart';
 import 'notif.dart';
 import 'pages/focus_page.dart';
 import 'pages/onboarding.dart';
@@ -17,6 +18,7 @@ import 'pages/overview_page.dart';
 import 'pages/shop_page.dart';
 import 'settings.dart';
 import 'theme.dart';
+import 'todo/notes.dart';
 import 'todo/todo_page.dart';
 import 'todo/todo_sync.dart';
 import 'tracker.dart';
@@ -51,7 +53,8 @@ Future<void> liveActionMain(List<String> args) async {
 
 void onForegroundNotification(NotificationResponse response) {
   final payload = response.payload ?? '';
-  if (payload.startsWith('todo:')) {
+  if (payload.startsWith('todo:') || payload.startsWith('note:')) {
+    listsView.value = payload.startsWith('note:') ? ListsView.note : ListsView.todo;
     shellTab.value = 1;
     return;
   }
@@ -73,11 +76,22 @@ Future<void> main() async {
   try {
     await TaimeNative.registerUi((action) => tracker.handleAction(action));
   } catch (_) {}
+  List<({int id, String name, String spec, bool deleted})> rows(List<CustomSkin> l) => [
+    for (final c in l) (id: c.id, name: c.name, spec: c.spec, deleted: c.deleted),
+  ];
+  loadCustomSkins(rows(await db.select(db.customSkins).get()));
+  db.watchCustomSkins().listen((l) => loadCustomSkins(rows(l)));
+  await BalanceBuilder.warmUp();
   final prefs = Settings(await db.allPrefs());
+  if (await db.pref('fullScreenAsked') == null) {
+    await db.setPref('fullScreenAsked', '1');
+    await requestFullScreenAlerts();
+  }
   await ensureKittenArt(prefs.activeSkin);
   await tracker.materialize();
   await tracker.sync();
   resyncTodoReminders();
+  resyncNoteReminders();
   maybeAutoBackup();
   runApp(const TaimeApp());
 }
@@ -171,7 +185,7 @@ class Shell extends StatelessWidget {
 
   static const _items = [
     (Icons.spa_rounded, Icons.spa_outlined, 'Focus'),
-    (Icons.task_alt_rounded, Icons.task_alt_outlined, 'To-do'),
+    (Icons.task_alt_rounded, Icons.task_alt_outlined, 'To-do e note'),
     (Icons.grid_view_rounded, Icons.grid_view_outlined, 'Panoramica'),
     (Icons.storefront_rounded, Icons.storefront_outlined, 'Negozio'),
   ];
@@ -236,9 +250,9 @@ class _NavBar extends StatelessWidget {
             borderRadius: BorderRadius.circular(31),
             boxShadow: [
               BoxShadow(
-                color: tc.text.withValues(alpha: tc.dark ? 0.3 : 0.08),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
+                color: tc.shadow(1.3),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
               ),
             ],
           ),

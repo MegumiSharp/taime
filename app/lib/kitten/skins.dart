@@ -1,6 +1,9 @@
 /// The kitten catalogue: pure data, drawn by `painter.dart`.
 library;
 
+import 'dart:convert';
+import 'dart:math' as math;
+
 enum Rarity { comune, raro, epico, leggendario }
 
 extension RarityInfo on Rarity {
@@ -30,9 +33,30 @@ extension PoseInfo on Pose {
   };
 }
 
-enum CoatPattern { tintaUnita, tigrato, calico, point, macchie }
+enum CoatPattern { tintaUnita, tigrato, calico, point, macchie, soriano, panda }
 
-enum EyeStyle { puntini, dorati, azzurri }
+extension CoatPatternInfo on CoatPattern {
+  String get label => switch (this) {
+    CoatPattern.tintaUnita => 'Tinta unita',
+    CoatPattern.tigrato => 'Tigrato',
+    CoatPattern.calico => 'Tricolore',
+    CoatPattern.point => 'Siamese',
+    CoatPattern.macchie => 'A macchie',
+    CoatPattern.soriano => 'Soriano',
+    CoatPattern.panda => 'Panda',
+  };
+}
+
+enum EyeStyle { puntini, dorati, azzurri, verdi }
+
+extension EyeStyleInfo on EyeStyle {
+  String get label => switch (this) {
+    EyeStyle.puntini => 'Puntini',
+    EyeStyle.dorati => 'Dorati',
+    EyeStyle.azzurri => 'Azzurri',
+    EyeStyle.verdi => 'Verdi',
+  };
+}
 
 enum Accessory {
   nessuno,
@@ -60,6 +84,62 @@ enum Accessory {
   cappelloFesta,
   girasole,
   casco,
+  papillon,
+  antennine,
+  cappuccioRana,
+  cappelloCowboy,
+  cappelloFragola,
+  ciliegie,
+  tiara,
+  cornoUnicorno,
+}
+
+extension AccessoryInfo on Accessory {
+  /// Worn at the neck or on the back (the second slot when you make a kitten).
+  bool get neckOrBack => const {
+    Accessory.sciarpa,
+    Accessory.campanella,
+    Accessory.papillon,
+    Accessory.mantello,
+    Accessory.ali,
+    Accessory.aliDrago,
+  }.contains(this);
+
+  String get label => switch (this) {
+    Accessory.nessuno => 'Niente',
+    Accessory.fiocco => 'Fiocco',
+    Accessory.sciarpa => 'Sciarpa',
+    Accessory.campanella => 'Collarino',
+    Accessory.cuffie => 'Cuffie',
+    Accessory.berretto => 'Berretto',
+    Accessory.basco => 'Basco',
+    Accessory.coronaFiori => 'Coroncina di fiori',
+    Accessory.occhiali => 'Occhiali',
+    Accessory.germoglio => 'Germoglio',
+    Accessory.corona => 'Corona',
+    Accessory.mantello => 'Mantello',
+    Accessory.lunaFermaglio => 'Fermaglio luna',
+    Accessory.coronaFoglie => 'Corona di foglie',
+    Accessory.cappelloMago => 'Cappello da mago',
+    Accessory.cappelloStrega => 'Cappello da strega',
+    Accessory.aureola => 'Aureola',
+    Accessory.ali => 'Ali',
+    Accessory.aliDrago => 'Ali di drago',
+    Accessory.cornine => 'Cornini',
+    Accessory.cappelloChef => 'Cappello da chef',
+    Accessory.bandana => 'Bandana',
+    Accessory.cappelloFesta => 'Cappellino da festa',
+    Accessory.girasole => 'Girasole',
+    Accessory.casco => 'Casco spaziale',
+    Accessory.papillon => 'Papillon',
+    Accessory.antennine => 'Antennine',
+    Accessory.cappuccioRana => 'Cappuccio rana',
+    Accessory.cappelloCowboy => 'Cappello da cowboy',
+    Accessory.cappelloFragola => 'Cappello fragola',
+    Accessory.ciliegie => 'Ciliegie',
+    Accessory.tiara => 'Tiara',
+    Accessory.cornoUnicorno => 'Corno di unicorno',
+  };
 }
 
 enum Effect {
@@ -81,6 +161,37 @@ enum Effect {
   stelleCadenti,
   coriandoli,
   fuochiFatui,
+  pioggia,
+  fulmini,
+  foglie,
+  braci,
+}
+
+extension EffectInfo on Effect {
+  String get label => switch (this) {
+    Effect.nessuno => 'Niente',
+    Effect.stelle => 'Pelo stellato',
+    Effect.scintille => 'Scintille',
+    Effect.petali => 'Petali',
+    Effect.lucciole => 'Lucciole',
+    Effect.note => 'Note musicali',
+    Effect.pittura => 'Macchie di colore',
+    Effect.codaArcobaleno => 'Coda arcobaleno',
+    Effect.sciarpaVento => 'Sciarpa al vento',
+    Effect.fluttua => 'Fluttua',
+    Effect.fantasma => 'Fantasma',
+    Effect.magia => 'Magia',
+    Effect.bolle => 'Bolle',
+    Effect.neve => 'Neve',
+    Effect.cuori => 'Cuori',
+    Effect.stelleCadenti => 'Stelle cadenti',
+    Effect.coriandoli => 'Coriandoli',
+    Effect.fuochiFatui => 'Fuochi fatui',
+    Effect.pioggia => 'Pioggerella',
+    Effect.fulmini => 'Fulmini',
+    Effect.foglie => 'Foglie',
+    Effect.braci => 'Braci',
+  };
 }
 
 class Coat {
@@ -144,6 +255,70 @@ class Skin {
   final bool free;
 
   bool has(Effect e) => effect == e || effect2 == e;
+
+  bool get isCustom => id.startsWith(kCustomPrefix);
+
+  /// The look only (coat, pose, eyes, accessories, effects), for kittens you
+  /// make yourself.
+  Map<String, Object?> lookJson() => {
+    'pattern': coat.pattern.name,
+    'base': coat.base,
+    'second': coat.second,
+    'third': coat.third,
+    'muzzle': coat.whiteMuzzle,
+    'belly': coat.whiteBelly,
+    'paws': coat.whitePaws,
+    'blaze': coat.blaze,
+    'pose': pose.name,
+    'eyes': eyes.name,
+    'acc': accessory.name,
+    'accColor': accessoryColor,
+    'acc2': accessory2.name,
+    'acc2Color': accessory2Color,
+    'fx': effect.name,
+    'fx2': effect2.name,
+  };
+
+  static Skin fromLook(String id, String name, Map<String, Object?> j) {
+    T pick<T extends Enum>(List<T> values, Object? v, T fallback) =>
+        values.where((e) => e.name == v).firstOrNull ?? fallback;
+    final base = (j['base'] as int?) ?? 0xFFF3AE6B;
+    return Skin(
+      id: id,
+      name: name,
+      rarity: Rarity.comune,
+      price: 0,
+      coat: Coat(
+        pattern: pick(CoatPattern.values, j['pattern'], CoatPattern.tintaUnita),
+        base: base,
+        second: j['second'] as int?,
+        third: j['third'] as int?,
+        whiteMuzzle: j['muzzle'] == true,
+        whiteBelly: j['belly'] == true,
+        whitePaws: j['paws'] == true,
+        blaze: j['blaze'] == true,
+        darkOutline: _luminance(base) < 0.12,
+      ),
+      pose: pick(Pose.values, j['pose'], Pose.seduto),
+      eyes: pick(EyeStyle.values, j['eyes'], EyeStyle.puntini),
+      accessory: pick(Accessory.values, j['acc'], Accessory.nessuno),
+      accessoryColor: (j['accColor'] as int?) ?? 0xFFE89BBE,
+      accessory2: pick(Accessory.values, j['acc2'], Accessory.nessuno),
+      accessory2Color: (j['acc2Color'] as int?) ?? 0xFFF2C94C,
+      effect: pick(Effect.values, j['fx'], Effect.nessuno),
+      effect2: pick(Effect.values, j['fx2'], Effect.nessuno),
+    );
+  }
+}
+
+/// Relative luminance of an ARGB colour (sRGB), without Flutter.
+double _luminance(int argb) {
+  double ch(int v) {
+    final c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
+  }
+
+  return 0.2126 * ch((argb >> 16) & 0xFF) + 0.7152 * ch((argb >> 8) & 0xFF) + 0.0722 * ch(argb & 0xFF);
 }
 
 // Coat colours: flat, warm, never saturated.
@@ -727,11 +902,254 @@ const List<Skin> kSkins = [
     effect: Effect.scintille,
     coat: Coat(pattern: CoatPattern.macchie, base: 0xFFC4E3C4, second: 0xFF9FCBA2, whiteMuzzle: true),
   ),
+
+  // --- 2.2: altri 17 ---------------------------------------------------------
+  Skin(
+    id: 'pesca',
+    name: 'Pesca',
+    rarity: Rarity.comune,
+    price: 100,
+    coat: Coat(pattern: CoatPattern.tintaUnita, base: 0xFFF7C7A6, whiteMuzzle: true, whitePaws: true),
+  ),
+  Skin(
+    id: 'perla',
+    name: 'Perla',
+    rarity: Rarity.comune,
+    price: 140,
+    pose: Pose.pagnotta,
+    eyes: EyeStyle.dorati,
+    coat: Coat(pattern: CoatPattern.tintaUnita, base: 0xFFA9B3C2),
+  ),
+  Skin(
+    id: 'bruno',
+    name: 'Bruno',
+    rarity: Rarity.comune,
+    price: 120,
+    pose: Pose.pagnotta,
+    coat: Coat(pattern: CoatPattern.tintaUnita, base: _chocolate, whiteMuzzle: true),
+  ),
+  Skin(
+    id: 'ciliegia',
+    name: 'Ciliegia',
+    rarity: Rarity.comune,
+    price: 160,
+    accessory: Accessory.ciliegie,
+    accessoryColor: 0xFFE8646E,
+    coat: Coat(pattern: CoatPattern.tintaUnita, base: 0xFFFBEFE3, whiteMuzzle: true),
+  ),
+  Skin(
+    id: 'wendy',
+    name: 'Wendy',
+    rarity: Rarity.raro,
+    price: 450,
+    eyes: EyeStyle.verdi,
+    coat: Coat(pattern: CoatPattern.soriano, base: 0xFFB5A290, second: 0xFF6F5D50, third: 0xFFD8CBBE),
+  ),
+  Skin(
+    id: 'minou',
+    name: 'Minou',
+    rarity: Rarity.raro,
+    price: 480,
+    eyes: EyeStyle.dorati,
+    accessory2: Accessory.papillon,
+    accessory2Color: 0xFFE57B7B,
+    coat: Coat(
+      pattern: CoatPattern.tintaUnita,
+      base: _black,
+      whiteMuzzle: true,
+      whiteBelly: true,
+      whitePaws: true,
+      darkOutline: true,
+    ),
+  ),
+  Skin(
+    id: 'panda',
+    name: 'Panda',
+    rarity: Rarity.raro,
+    price: 520,
+    pose: Pose.pagnotta,
+    coat: Coat(pattern: CoatPattern.panda, base: _white, second: 0xFF5B5254),
+  ),
+  Skin(
+    id: 'apetta',
+    name: 'Apetta',
+    rarity: Rarity.raro,
+    price: 540,
+    accessory: Accessory.antennine,
+    accessoryColor: 0xFF5A3E36,
+    accessory2: Accessory.ali,
+    accessory2Color: 0xFFEAF4FB,
+    coat: Coat(pattern: CoatPattern.tigrato, base: 0xFFF6D57A, second: 0xFF9C7158, whiteMuzzle: true),
+  ),
+  Skin(
+    id: 'ranocchio',
+    name: 'Ranocchio',
+    rarity: Rarity.raro,
+    price: 560,
+    pose: Pose.pagnotta,
+    accessory: Accessory.cappuccioRana,
+    accessoryColor: 0xFF9BCF8E,
+    coat: Coat(pattern: CoatPattern.tintaUnita, base: 0xFFF3E6CF, whiteMuzzle: true),
+  ),
+  Skin(
+    id: 'cowboy',
+    name: 'Cowboy',
+    rarity: Rarity.raro,
+    price: 500,
+    accessory: Accessory.cappelloCowboy,
+    accessoryColor: 0xFFC39466,
+    coat: Coat(pattern: CoatPattern.tigrato, base: _caramel, second: 0xFFB77E4E, whiteMuzzle: true, whitePaws: true),
+  ),
+  Skin(
+    id: 'fragolina',
+    name: 'Fragolina',
+    rarity: Rarity.raro,
+    price: 420,
+    accessory: Accessory.cappelloFragola,
+    accessoryColor: 0xFFEF7F86,
+    coat: Coat(pattern: CoatPattern.tintaUnita, base: 0xFFFFF1EC, whiteMuzzle: true),
+  ),
+  Skin(
+    id: 'pioggerella',
+    name: 'Pioggerella',
+    rarity: Rarity.epico,
+    price: 1150,
+    effect: Effect.pioggia,
+    accessory2: Accessory.sciarpa,
+    accessory2Color: 0xFFF6D46E,
+    coat: Coat(pattern: CoatPattern.tintaUnita, base: 0xFFB9C4D6, whiteMuzzle: true, whiteBelly: true),
+  ),
+  Skin(
+    id: 'tempesta',
+    name: 'Tempesta',
+    rarity: Rarity.epico,
+    price: 1350,
+    eyes: EyeStyle.azzurri,
+    effect: Effect.fulmini,
+    coat: Coat(pattern: CoatPattern.macchie, base: 0xFF9AA2B2, second: 0xFF737B8E),
+  ),
+  Skin(
+    id: 'autunno',
+    name: 'Autunno',
+    rarity: Rarity.epico,
+    price: 1100,
+    effect: Effect.foglie,
+    accessory2: Accessory.sciarpa,
+    accessory2Color: 0xFFE59A5B,
+    coat: Coat(pattern: CoatPattern.tigrato, base: _caramel, second: _brownStripe, whiteMuzzle: true),
+  ),
+  Skin(
+    id: 'duchessa',
+    name: 'Duchessa',
+    rarity: Rarity.epico,
+    price: 1400,
+    eyes: EyeStyle.azzurri,
+    accessory: Accessory.tiara,
+    accessoryColor: 0xFFE3DDEE,
+    accessory2: Accessory.campanella,
+    accessory2Color: 0xFFC6A8F2,
+    coat: Coat(pattern: CoatPattern.point, base: _cream, second: 0xFFB6A09A),
+  ),
+  Skin(
+    id: 'unicorno',
+    name: 'Unicorno',
+    rarity: Rarity.leggendario,
+    price: 4400,
+    eyes: EyeStyle.azzurri,
+    accessory: Accessory.cornoUnicorno,
+    accessoryColor: 0xFFF2D27C,
+    effect: Effect.codaArcobaleno,
+    effect2: Effect.scintille,
+    coat: Coat(pattern: CoatPattern.tintaUnita, base: 0xFFFBF7FF),
+  ),
+  Skin(
+    id: 'fenice',
+    name: 'Fenice',
+    rarity: Rarity.leggendario,
+    price: 4600,
+    eyes: EyeStyle.dorati,
+    accessory2: Accessory.ali,
+    accessory2Color: 0xFFF6C66B,
+    effect: Effect.braci,
+    effect2: Effect.scintille,
+    coat: Coat(pattern: CoatPattern.tigrato, base: 0xFFF4A261, second: 0xFFE07A5F, whiteMuzzle: true),
+  ),
 ];
 
 final Map<String, Skin> kSkinById = {for (final s in kSkins) s.id: s};
 
-Skin skinById(String? id) => kSkinById[id] ?? kSkins.first;
+/// Ids of kittens you made start with this, followed by their row id.
+const String kCustomPrefix = 'custom_';
+const int kMaxCustomSkins = 5;
+
+/// Kittens made in "Crea il tuo gattino", kept in step with the database by
+/// `main.dart` (deleted ones too, so old sessions still draw them).
+final Map<String, Skin> kCustomSkins = {};
+final List<String> _liveCustomIds = [];
+
+/// The kittens you made that were not deleted, oldest first.
+List<Skin> get myCustomSkins => [for (final id in _liveCustomIds) kCustomSkins[id]!];
+
+Skin skinById(String? id) => kSkinById[id] ?? kCustomSkins[id] ?? kSkins.first;
+
+/// Rebuilds [kCustomSkins] from database rows.
+void loadCustomSkins(Iterable<({int id, String name, String spec, bool deleted})> rows) {
+  kCustomSkins.clear();
+  _liveCustomIds.clear();
+  for (final r in rows) {
+    final id = '$kCustomPrefix${r.id}';
+    Map<String, Object?> look;
+    try {
+      look = (jsonDecode(r.spec) as Map).cast<String, Object?>();
+    } on FormatException {
+      look = const {};
+    }
+    kCustomSkins[id] = Skin.fromLook(id, r.name, look);
+    if (!r.deleted) _liveCustomIds.add(id);
+  }
+}
+
+/// What "Crea il tuo gattino" offers: every style of the kittens you own.
+class KittenParts {
+  KittenParts(Iterable<Skin> owned) {
+    void add<T>(List<T> list, T v) {
+      if (!list.contains(v)) list.add(v);
+    }
+
+    for (final s in owned) {
+      final c = s.coat;
+      add(coats, c.base);
+      if (c.pattern != CoatPattern.tintaUnita) add(patterns, (c.pattern, c.second, c.third));
+      muzzle |= c.whiteMuzzle;
+      blaze |= c.blaze;
+      belly |= c.whiteBelly;
+      paws |= c.whitePaws;
+      add(eyes, s.eyes);
+      for (final (a, col) in [(s.accessory, s.accessoryColor), (s.accessory2, s.accessory2Color)]) {
+        if (a == Accessory.nessuno) continue;
+        add(a.neckOrBack ? neck : head, (a, col));
+      }
+      for (final e in [s.effect, s.effect2]) {
+        if (e != Effect.nessuno) add(effects, e);
+      }
+    }
+  }
+
+  final List<int> coats = [];
+  final List<(CoatPattern, int?, int?)> patterns = [(CoatPattern.tintaUnita, null, null)];
+  bool muzzle = false, blaze = false, belly = false, paws = false;
+  final List<EyeStyle> eyes = [EyeStyle.puntini];
+  final List<(Accessory, int)> head = [(Accessory.nessuno, 0)];
+  final List<(Accessory, int)> neck = [(Accessory.nessuno, 0)];
+  final List<Effect> effects = [Effect.nessuno];
+
+  /// Styles unlocked, out of everything the catalogue has, for the hint.
+  int get count =>
+      coats.length + patterns.length + eyes.length + head.length + neck.length + effects.length +
+      [muzzle, blaze, belly, paws].where((b) => b).length;
+
+  static final int total = KittenParts(kSkins).count;
+}
 
 // --- Growth ---------------------------------------------------------------
 

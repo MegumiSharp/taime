@@ -21,6 +21,10 @@ import 'overview_page.dart' show overviewRequest;
 import 'settings_page.dart';
 import 'shop_page.dart' show BalanceChip, ownedSkinIds;
 
+/// "Su cosa ti concentri?" lives for the whole app, so switching tab before
+/// pressing Inizia does not lose what you typed.
+final focusNote = TextEditingController();
+
 class FocusPage extends StatefulWidget {
   const FocusPage({super.key, required this.settings});
   final Settings settings;
@@ -32,7 +36,6 @@ class FocusPage extends StatefulWidget {
 class _FocusPageState extends State<FocusPage> {
   late final Timer _ticker;
   DateTime _now = DateTime.now();
-  final _note = TextEditingController();
   int? _pendingActivityId;
   int _lastAdults = -1;
   int _lastStage = -1;
@@ -49,7 +52,6 @@ class _FocusPageState extends State<FocusPage> {
   @override
   void dispose() {
     _ticker.cancel();
-    _note.dispose();
     super.dispose();
   }
 
@@ -159,7 +161,7 @@ class _FocusPageState extends State<FocusPage> {
             _ActivityHeader(
               activity: activity,
               session: session,
-              note: _note,
+              note: focusNote,
               onTap: () => _pickActivity(context, session, acts),
             ),
             const SizedBox(height: 14),
@@ -218,18 +220,16 @@ class _FocusPageState extends State<FocusPage> {
               onResume: () => tracker.resume(),
               onStop: () => _stop(context, session!, segs),
             ),
+            const SizedBox(height: 24),
+            TodayCard(goalMinutes: s.dailyGoalMin, now: _now),
             AnimatedSwitcher(
               duration: Motion.of(context, Motion.slow),
               child: running
-                  ? const SizedBox(height: 24)
+                  ? const SizedBox(height: 12)
                   : Padding(
-                      padding: const EdgeInsets.only(top: 28),
+                      padding: const EdgeInsets.only(top: 12),
                       child: Column(
                         children: [
-                          if (s.dailyGoalMin > 0) ...[
-                            GoalCard(goalMinutes: s.dailyGoalMin),
-                            const SizedBox(height: 12),
-                          ],
                           GestureDetector(
                             onTap: () {
                               overviewRequest.value = 'anno';
@@ -258,7 +258,7 @@ class _FocusPageState extends State<FocusPage> {
     Haptic.medium();
     final activity = _currentActivity(null, acts)!;
     await ensureKittenArt(widget.settings.activeSkin);
-    await tracker.start(activity.id, note: _note.text.trim());
+    await tracker.start(activity.id, note: focusNote.text.trim());
   }
 
   Future<void> _stop(BuildContext context, Session session, List<Segment> segs) async {
@@ -266,7 +266,7 @@ class _FocusPageState extends State<FocusPage> {
     final work = Tracker.worked(segs);
     final skinId = session.skinId ?? widget.settings.activeSkin;
     await tracker.stop();
-    _note.clear();
+    focusNote.clear();
     if (!context.mounted) return;
     await showSoftSheet<void>(
       context,
@@ -558,8 +558,8 @@ class _Scene extends StatelessWidget {
                   child: Transform.scale(
                     scale: 1 + t * 1.2,
                     child: Container(
-                      width: size * 0.8,
-                      height: size * 0.8,
+                      width: size * 0.76,
+                      height: size * 0.76,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
@@ -600,7 +600,7 @@ class _Scene extends StatelessWidget {
               ),
               if (onTapKitten != null)
                 Positioned(
-                  bottom: size * 0.06,
+                  bottom: 0,
                   child: Opacity(
                     opacity: 1 - t,
                     child: Text(
@@ -1036,7 +1036,7 @@ class _SkinPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tc = context.tc;
-    final skins = kSkins.where((s) => owned.contains(s.id)).toList();
+    final skins = [...kSkins.where((s) => owned.contains(s.id)), ...myCustomSkins];
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),

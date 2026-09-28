@@ -2207,6 +2207,18 @@ class $TodosTable extends Todos with TableInfo<$TodosTable, Todo> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _horizonMeta = const VerificationMeta(
+    'horizon',
+  );
+  @override
+  late final GeneratedColumn<int> horizon = GeneratedColumn<int>(
+    'horizon',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2222,6 +2234,7 @@ class $TodosTable extends Todos with TableInfo<$TodosTable, Todo> {
     completedAt,
     sort,
     createdAt,
+    horizon,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2320,6 +2333,12 @@ class $TodosTable extends Todos with TableInfo<$TodosTable, Todo> {
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('horizon')) {
+      context.handle(
+        _horizonMeta,
+        horizon.isAcceptableOrUnknown(data['horizon']!, _horizonMeta),
+      );
+    }
     return context;
   }
 
@@ -2381,6 +2400,10 @@ class $TodosTable extends Todos with TableInfo<$TodosTable, Todo> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      horizon: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}horizon'],
+      )!,
     );
   }
 
@@ -2412,6 +2435,9 @@ class Todo extends DataClass implements Insertable<Todo> {
   final DateTime? completedAt;
   final int sort;
   final DateTime createdAt;
+
+  /// For to-dos without a date: 0 = oggi, 1 = questa settimana, 2 = più avanti.
+  final int horizon;
   const Todo({
     required this.id,
     this.parentId,
@@ -2426,6 +2452,7 @@ class Todo extends DataClass implements Insertable<Todo> {
     this.completedAt,
     required this.sort,
     required this.createdAt,
+    required this.horizon,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2455,6 +2482,7 @@ class Todo extends DataClass implements Insertable<Todo> {
     }
     map['sort'] = Variable<int>(sort);
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['horizon'] = Variable<int>(horizon);
     return map;
   }
 
@@ -2483,6 +2511,7 @@ class Todo extends DataClass implements Insertable<Todo> {
           : Value(completedAt),
       sort: Value(sort),
       createdAt: Value(createdAt),
+      horizon: Value(horizon),
     );
   }
 
@@ -2505,6 +2534,7 @@ class Todo extends DataClass implements Insertable<Todo> {
       completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
       sort: serializer.fromJson<int>(json['sort']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      horizon: serializer.fromJson<int>(json['horizon']),
     );
   }
   @override
@@ -2524,6 +2554,7 @@ class Todo extends DataClass implements Insertable<Todo> {
       'completedAt': serializer.toJson<DateTime?>(completedAt),
       'sort': serializer.toJson<int>(sort),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'horizon': serializer.toJson<int>(horizon),
     };
   }
 
@@ -2541,6 +2572,7 @@ class Todo extends DataClass implements Insertable<Todo> {
     Value<DateTime?> completedAt = const Value.absent(),
     int? sort,
     DateTime? createdAt,
+    int? horizon,
   }) => Todo(
     id: id ?? this.id,
     parentId: parentId.present ? parentId.value : this.parentId,
@@ -2555,6 +2587,7 @@ class Todo extends DataClass implements Insertable<Todo> {
     completedAt: completedAt.present ? completedAt.value : this.completedAt,
     sort: sort ?? this.sort,
     createdAt: createdAt ?? this.createdAt,
+    horizon: horizon ?? this.horizon,
   );
   Todo copyWithCompanion(TodosCompanion data) {
     return Todo(
@@ -2579,6 +2612,7 @@ class Todo extends DataClass implements Insertable<Todo> {
           : this.completedAt,
       sort: data.sort.present ? data.sort.value : this.sort,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      horizon: data.horizon.present ? data.horizon.value : this.horizon,
     );
   }
 
@@ -2597,7 +2631,8 @@ class Todo extends DataClass implements Insertable<Todo> {
           ..write('remindBefore: $remindBefore, ')
           ..write('completedAt: $completedAt, ')
           ..write('sort: $sort, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('horizon: $horizon')
           ..write(')'))
         .toString();
   }
@@ -2617,6 +2652,7 @@ class Todo extends DataClass implements Insertable<Todo> {
     completedAt,
     sort,
     createdAt,
+    horizon,
   );
   @override
   bool operator ==(Object other) =>
@@ -2634,7 +2670,8 @@ class Todo extends DataClass implements Insertable<Todo> {
           other.remindBefore == this.remindBefore &&
           other.completedAt == this.completedAt &&
           other.sort == this.sort &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.horizon == this.horizon);
 }
 
 class TodosCompanion extends UpdateCompanion<Todo> {
@@ -2651,6 +2688,7 @@ class TodosCompanion extends UpdateCompanion<Todo> {
   final Value<DateTime?> completedAt;
   final Value<int> sort;
   final Value<DateTime> createdAt;
+  final Value<int> horizon;
   const TodosCompanion({
     this.id = const Value.absent(),
     this.parentId = const Value.absent(),
@@ -2665,6 +2703,7 @@ class TodosCompanion extends UpdateCompanion<Todo> {
     this.completedAt = const Value.absent(),
     this.sort = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.horizon = const Value.absent(),
   });
   TodosCompanion.insert({
     this.id = const Value.absent(),
@@ -2680,6 +2719,7 @@ class TodosCompanion extends UpdateCompanion<Todo> {
     this.completedAt = const Value.absent(),
     this.sort = const Value.absent(),
     required DateTime createdAt,
+    this.horizon = const Value.absent(),
   }) : title = Value(title),
        createdAt = Value(createdAt);
   static Insertable<Todo> custom({
@@ -2696,6 +2736,7 @@ class TodosCompanion extends UpdateCompanion<Todo> {
     Expression<DateTime>? completedAt,
     Expression<int>? sort,
     Expression<DateTime>? createdAt,
+    Expression<int>? horizon,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2711,6 +2752,7 @@ class TodosCompanion extends UpdateCompanion<Todo> {
       if (completedAt != null) 'completed_at': completedAt,
       if (sort != null) 'sort': sort,
       if (createdAt != null) 'created_at': createdAt,
+      if (horizon != null) 'horizon': horizon,
     });
   }
 
@@ -2728,6 +2770,7 @@ class TodosCompanion extends UpdateCompanion<Todo> {
     Value<DateTime?>? completedAt,
     Value<int>? sort,
     Value<DateTime>? createdAt,
+    Value<int>? horizon,
   }) {
     return TodosCompanion(
       id: id ?? this.id,
@@ -2743,6 +2786,7 @@ class TodosCompanion extends UpdateCompanion<Todo> {
       completedAt: completedAt ?? this.completedAt,
       sort: sort ?? this.sort,
       createdAt: createdAt ?? this.createdAt,
+      horizon: horizon ?? this.horizon,
     );
   }
 
@@ -2788,6 +2832,9 @@ class TodosCompanion extends UpdateCompanion<Todo> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (horizon.present) {
+      map['horizon'] = Variable<int>(horizon.value);
+    }
     return map;
   }
 
@@ -2806,6 +2853,843 @@ class TodosCompanion extends UpdateCompanion<Todo> {
           ..write('remindBefore: $remindBefore, ')
           ..write('completedAt: $completedAt, ')
           ..write('sort: $sort, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('horizon: $horizon')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $NotesTable extends Notes with TableInfo<$NotesTable, Note> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NotesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _bodyMeta = const VerificationMeta('body');
+  @override
+  late final GeneratedColumn<String> body = GeneratedColumn<String>(
+    'body',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<int> color = GeneratedColumn<int>(
+    'color',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _hasTimeMeta = const VerificationMeta(
+    'hasTime',
+  );
+  @override
+  late final GeneratedColumn<bool> hasTime = GeneratedColumn<bool>(
+    'has_time',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("has_time" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _remindMeta = const VerificationMeta('remind');
+  @override
+  late final GeneratedColumn<bool> remind = GeneratedColumn<bool>(
+    'remind',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("remind" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    body,
+    color,
+    date,
+    hasTime,
+    remind,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'notes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Note> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('body')) {
+      context.handle(
+        _bodyMeta,
+        body.isAcceptableOrUnknown(data['body']!, _bodyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bodyMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    }
+    if (data.containsKey('has_time')) {
+      context.handle(
+        _hasTimeMeta,
+        hasTime.isAcceptableOrUnknown(data['has_time']!, _hasTimeMeta),
+      );
+    }
+    if (data.containsKey('remind')) {
+      context.handle(
+        _remindMeta,
+        remind.isAcceptableOrUnknown(data['remind']!, _remindMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Note map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Note(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      body: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}body'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}color'],
+      ),
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      ),
+      hasTime: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}has_time'],
+      )!,
+      remind: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}remind'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $NotesTable createAlias(String alias) {
+    return $NotesTable(attachedDatabase, alias);
+  }
+}
+
+class Note extends DataClass implements Insertable<Note> {
+  final int id;
+  final String body;
+
+  /// ARGB swatch; null = plain card.
+  final int? color;
+  final DateTime? date;
+  final bool hasTime;
+
+  /// Notify at [date] (09:00 when it has no time).
+  final bool remind;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const Note({
+    required this.id,
+    required this.body,
+    this.color,
+    this.date,
+    required this.hasTime,
+    required this.remind,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['body'] = Variable<String>(body);
+    if (!nullToAbsent || color != null) {
+      map['color'] = Variable<int>(color);
+    }
+    if (!nullToAbsent || date != null) {
+      map['date'] = Variable<DateTime>(date);
+    }
+    map['has_time'] = Variable<bool>(hasTime);
+    map['remind'] = Variable<bool>(remind);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  NotesCompanion toCompanion(bool nullToAbsent) {
+    return NotesCompanion(
+      id: Value(id),
+      body: Value(body),
+      color: color == null && nullToAbsent
+          ? const Value.absent()
+          : Value(color),
+      date: date == null && nullToAbsent ? const Value.absent() : Value(date),
+      hasTime: Value(hasTime),
+      remind: Value(remind),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory Note.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Note(
+      id: serializer.fromJson<int>(json['id']),
+      body: serializer.fromJson<String>(json['body']),
+      color: serializer.fromJson<int?>(json['color']),
+      date: serializer.fromJson<DateTime?>(json['date']),
+      hasTime: serializer.fromJson<bool>(json['hasTime']),
+      remind: serializer.fromJson<bool>(json['remind']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'body': serializer.toJson<String>(body),
+      'color': serializer.toJson<int?>(color),
+      'date': serializer.toJson<DateTime?>(date),
+      'hasTime': serializer.toJson<bool>(hasTime),
+      'remind': serializer.toJson<bool>(remind),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  Note copyWith({
+    int? id,
+    String? body,
+    Value<int?> color = const Value.absent(),
+    Value<DateTime?> date = const Value.absent(),
+    bool? hasTime,
+    bool? remind,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => Note(
+    id: id ?? this.id,
+    body: body ?? this.body,
+    color: color.present ? color.value : this.color,
+    date: date.present ? date.value : this.date,
+    hasTime: hasTime ?? this.hasTime,
+    remind: remind ?? this.remind,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  Note copyWithCompanion(NotesCompanion data) {
+    return Note(
+      id: data.id.present ? data.id.value : this.id,
+      body: data.body.present ? data.body.value : this.body,
+      color: data.color.present ? data.color.value : this.color,
+      date: data.date.present ? data.date.value : this.date,
+      hasTime: data.hasTime.present ? data.hasTime.value : this.hasTime,
+      remind: data.remind.present ? data.remind.value : this.remind,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Note(')
+          ..write('id: $id, ')
+          ..write('body: $body, ')
+          ..write('color: $color, ')
+          ..write('date: $date, ')
+          ..write('hasTime: $hasTime, ')
+          ..write('remind: $remind, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, body, color, date, hasTime, remind, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Note &&
+          other.id == this.id &&
+          other.body == this.body &&
+          other.color == this.color &&
+          other.date == this.date &&
+          other.hasTime == this.hasTime &&
+          other.remind == this.remind &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class NotesCompanion extends UpdateCompanion<Note> {
+  final Value<int> id;
+  final Value<String> body;
+  final Value<int?> color;
+  final Value<DateTime?> date;
+  final Value<bool> hasTime;
+  final Value<bool> remind;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const NotesCompanion({
+    this.id = const Value.absent(),
+    this.body = const Value.absent(),
+    this.color = const Value.absent(),
+    this.date = const Value.absent(),
+    this.hasTime = const Value.absent(),
+    this.remind = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  NotesCompanion.insert({
+    this.id = const Value.absent(),
+    required String body,
+    this.color = const Value.absent(),
+    this.date = const Value.absent(),
+    this.hasTime = const Value.absent(),
+    this.remind = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) : body = Value(body),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<Note> custom({
+    Expression<int>? id,
+    Expression<String>? body,
+    Expression<int>? color,
+    Expression<DateTime>? date,
+    Expression<bool>? hasTime,
+    Expression<bool>? remind,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (body != null) 'body': body,
+      if (color != null) 'color': color,
+      if (date != null) 'date': date,
+      if (hasTime != null) 'has_time': hasTime,
+      if (remind != null) 'remind': remind,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  NotesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? body,
+    Value<int?>? color,
+    Value<DateTime?>? date,
+    Value<bool>? hasTime,
+    Value<bool>? remind,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return NotesCompanion(
+      id: id ?? this.id,
+      body: body ?? this.body,
+      color: color ?? this.color,
+      date: date ?? this.date,
+      hasTime: hasTime ?? this.hasTime,
+      remind: remind ?? this.remind,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (body.present) {
+      map['body'] = Variable<String>(body.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<int>(color.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (hasTime.present) {
+      map['has_time'] = Variable<bool>(hasTime.value);
+    }
+    if (remind.present) {
+      map['remind'] = Variable<bool>(remind.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NotesCompanion(')
+          ..write('id: $id, ')
+          ..write('body: $body, ')
+          ..write('color: $color, ')
+          ..write('date: $date, ')
+          ..write('hasTime: $hasTime, ')
+          ..write('remind: $remind, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CustomSkinsTable extends CustomSkins
+    with TableInfo<$CustomSkinsTable, CustomSkin> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CustomSkinsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _specMeta = const VerificationMeta('spec');
+  @override
+  late final GeneratedColumn<String> spec = GeneratedColumn<String>(
+    'spec',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<bool> deleted = GeneratedColumn<bool>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, spec, deleted, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'custom_skins';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CustomSkin> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('spec')) {
+      context.handle(
+        _specMeta,
+        spec.isAcceptableOrUnknown(data['spec']!, _specMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_specMeta);
+    }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CustomSkin map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CustomSkin(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      spec: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}spec'],
+      )!,
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}deleted'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CustomSkinsTable createAlias(String alias) {
+    return $CustomSkinsTable(attachedDatabase, alias);
+  }
+}
+
+class CustomSkin extends DataClass implements Insertable<CustomSkin> {
+  final int id;
+  final String name;
+
+  /// JSON, see `Skin.toJson`.
+  final String spec;
+  final bool deleted;
+  final DateTime createdAt;
+  const CustomSkin({
+    required this.id,
+    required this.name,
+    required this.spec,
+    required this.deleted,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['spec'] = Variable<String>(spec);
+    map['deleted'] = Variable<bool>(deleted);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  CustomSkinsCompanion toCompanion(bool nullToAbsent) {
+    return CustomSkinsCompanion(
+      id: Value(id),
+      name: Value(name),
+      spec: Value(spec),
+      deleted: Value(deleted),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory CustomSkin.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CustomSkin(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      spec: serializer.fromJson<String>(json['spec']),
+      deleted: serializer.fromJson<bool>(json['deleted']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'spec': serializer.toJson<String>(spec),
+      'deleted': serializer.toJson<bool>(deleted),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  CustomSkin copyWith({
+    int? id,
+    String? name,
+    String? spec,
+    bool? deleted,
+    DateTime? createdAt,
+  }) => CustomSkin(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    spec: spec ?? this.spec,
+    deleted: deleted ?? this.deleted,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  CustomSkin copyWithCompanion(CustomSkinsCompanion data) {
+    return CustomSkin(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      spec: data.spec.present ? data.spec.value : this.spec,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomSkin(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('spec: $spec, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, spec, deleted, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CustomSkin &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.spec == this.spec &&
+          other.deleted == this.deleted &&
+          other.createdAt == this.createdAt);
+}
+
+class CustomSkinsCompanion extends UpdateCompanion<CustomSkin> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String> spec;
+  final Value<bool> deleted;
+  final Value<DateTime> createdAt;
+  const CustomSkinsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.spec = const Value.absent(),
+    this.deleted = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  CustomSkinsCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    required String spec,
+    this.deleted = const Value.absent(),
+    required DateTime createdAt,
+  }) : name = Value(name),
+       spec = Value(spec),
+       createdAt = Value(createdAt);
+  static Insertable<CustomSkin> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? spec,
+    Expression<bool>? deleted,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (spec != null) 'spec': spec,
+      if (deleted != null) 'deleted': deleted,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  CustomSkinsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String>? spec,
+    Value<bool>? deleted,
+    Value<DateTime>? createdAt,
+  }) {
+    return CustomSkinsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      spec: spec ?? this.spec,
+      deleted: deleted ?? this.deleted,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (spec.present) {
+      map['spec'] = Variable<String>(spec.value);
+    }
+    if (deleted.present) {
+      map['deleted'] = Variable<bool>(deleted.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomSkinsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('spec: $spec, ')
+          ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -2822,6 +3706,8 @@ abstract class _$Db extends GeneratedDatabase {
   late final $PurchasesTable purchases = $PurchasesTable(this);
   late final $TodoCategoriesTable todoCategories = $TodoCategoriesTable(this);
   late final $TodosTable todos = $TodosTable(this);
+  late final $NotesTable notes = $NotesTable(this);
+  late final $CustomSkinsTable customSkins = $CustomSkinsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2834,6 +3720,8 @@ abstract class _$Db extends GeneratedDatabase {
     purchases,
     todoCategories,
     todos,
+    notes,
+    customSkins,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -4517,6 +5405,7 @@ typedef $$TodosTableCreateCompanionBuilder = TodosCompanion Function({
   Value<DateTime?> completedAt,
   Value<int> sort,
   required DateTime createdAt,
+  Value<int> horizon,
 });
 typedef $$TodosTableUpdateCompanionBuilder = TodosCompanion Function({
   Value<int> id,
@@ -4532,6 +5421,7 @@ typedef $$TodosTableUpdateCompanionBuilder = TodosCompanion Function({
   Value<DateTime?> completedAt,
   Value<int> sort,
   Value<DateTime> createdAt,
+  Value<int> horizon,
 });
 
 final class $$TodosTableReferences
@@ -4633,6 +5523,11 @@ class $$TodosTableFilterComposer extends Composer<_$Db, $TodosTable> {
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get horizon => $composableBuilder(
+    column: $table.horizon,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4746,6 +5641,11 @@ class $$TodosTableOrderingComposer extends Composer<_$Db, $TodosTable> {
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get horizon => $composableBuilder(
+    column: $table.horizon,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$TodosTableOrderingComposer get parentId {
     final $$TodosTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4840,6 +5740,9 @@ class $$TodosTableAnnotationComposer extends Composer<_$Db, $TodosTable> {
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
+  GeneratedColumn<int> get horizon =>
+      $composableBuilder(column: $table.horizon, builder: (column) => column);
+
   $$TodosTableAnnotationComposer get parentId {
     final $$TodosTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -4928,6 +5831,7 @@ class $$TodosTableTableManager
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<int> sort = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<int> horizon = const Value.absent(),
               }) => TodosCompanion(
                 id: id,
                 parentId: parentId,
@@ -4942,6 +5846,7 @@ class $$TodosTableTableManager
                 completedAt: completedAt,
                 sort: sort,
                 createdAt: createdAt,
+                horizon: horizon,
               ),
           createCompanionCallback:
               ({
@@ -4958,6 +5863,7 @@ class $$TodosTableTableManager
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<int> sort = const Value.absent(),
                 required DateTime createdAt,
+                Value<int> horizon = const Value.absent(),
               }) => TodosCompanion.insert(
                 id: id,
                 parentId: parentId,
@@ -4972,6 +5878,7 @@ class $$TodosTableTableManager
                 completedAt: completedAt,
                 sort: sort,
                 createdAt: createdAt,
+                horizon: horizon,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -5050,6 +5957,448 @@ typedef $$TodosTableProcessedTableManager =
       Todo,
       PrefetchHooks Function({bool parentId, bool categoryId})
     >;
+typedef $$NotesTableCreateCompanionBuilder = NotesCompanion Function({
+  Value<int> id,
+  required String body,
+  Value<int?> color,
+  Value<DateTime?> date,
+  Value<bool> hasTime,
+  Value<bool> remind,
+  required DateTime createdAt,
+  required DateTime updatedAt,
+});
+typedef $$NotesTableUpdateCompanionBuilder = NotesCompanion Function({
+  Value<int> id,
+  Value<String> body,
+  Value<int?> color,
+  Value<DateTime?> date,
+  Value<bool> hasTime,
+  Value<bool> remind,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
+
+class $$NotesTableFilterComposer extends Composer<_$Db, $NotesTable> {
+  $$NotesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get hasTime => $composableBuilder(
+    column: $table.hasTime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get remind => $composableBuilder(
+    column: $table.remind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$NotesTableOrderingComposer extends Composer<_$Db, $NotesTable> {
+  $$NotesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get hasTime => $composableBuilder(
+    column: $table.hasTime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get remind => $composableBuilder(
+    column: $table.remind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$NotesTableAnnotationComposer extends Composer<_$Db, $NotesTable> {
+  $$NotesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get body =>
+      $composableBuilder(column: $table.body, builder: (column) => column);
+
+  GeneratedColumn<int> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<bool> get hasTime =>
+      $composableBuilder(column: $table.hasTime, builder: (column) => column);
+
+  GeneratedColumn<bool> get remind =>
+      $composableBuilder(column: $table.remind, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$NotesTableTableManager
+    extends
+        RootTableManager<
+          _$Db,
+          $NotesTable,
+          Note,
+          $$NotesTableFilterComposer,
+          $$NotesTableOrderingComposer,
+          $$NotesTableAnnotationComposer,
+          $$NotesTableCreateCompanionBuilder,
+          $$NotesTableUpdateCompanionBuilder,
+          (Note, BaseReferences<_$Db, $NotesTable, Note>),
+          Note,
+          PrefetchHooks Function()
+        > {
+  $$NotesTableTableManager(_$Db db, $NotesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$NotesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$NotesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$NotesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> body = const Value.absent(),
+                Value<int?> color = const Value.absent(),
+                Value<DateTime?> date = const Value.absent(),
+                Value<bool> hasTime = const Value.absent(),
+                Value<bool> remind = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => NotesCompanion(
+                id: id,
+                body: body,
+                color: color,
+                date: date,
+                hasTime: hasTime,
+                remind: remind,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String body,
+                Value<int?> color = const Value.absent(),
+                Value<DateTime?> date = const Value.absent(),
+                Value<bool> hasTime = const Value.absent(),
+                Value<bool> remind = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+              }) => NotesCompanion.insert(
+                id: id,
+                body: body,
+                color: color,
+                date: date,
+                hasTime: hasTime,
+                remind: remind,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$NotesTable, Note>(table),
+                  BaseReferences<_$Db, $NotesTable, Note>(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$NotesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$Db,
+      $NotesTable,
+      Note,
+      $$NotesTableFilterComposer,
+      $$NotesTableOrderingComposer,
+      $$NotesTableAnnotationComposer,
+      $$NotesTableCreateCompanionBuilder,
+      $$NotesTableUpdateCompanionBuilder,
+      (Note, BaseReferences<_$Db, $NotesTable, Note>),
+      Note,
+      PrefetchHooks Function()
+    >;
+typedef $$CustomSkinsTableCreateCompanionBuilder =
+    CustomSkinsCompanion Function({
+      Value<int> id,
+      required String name,
+      required String spec,
+      Value<bool> deleted,
+      required DateTime createdAt,
+    });
+typedef $$CustomSkinsTableUpdateCompanionBuilder =
+    CustomSkinsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String> spec,
+      Value<bool> deleted,
+      Value<DateTime> createdAt,
+    });
+
+class $$CustomSkinsTableFilterComposer
+    extends Composer<_$Db, $CustomSkinsTable> {
+  $$CustomSkinsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get spec => $composableBuilder(
+    column: $table.spec,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CustomSkinsTableOrderingComposer
+    extends Composer<_$Db, $CustomSkinsTable> {
+  $$CustomSkinsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get spec => $composableBuilder(
+    column: $table.spec,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CustomSkinsTableAnnotationComposer
+    extends Composer<_$Db, $CustomSkinsTable> {
+  $$CustomSkinsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get spec =>
+      $composableBuilder(column: $table.spec, builder: (column) => column);
+
+  GeneratedColumn<bool> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$CustomSkinsTableTableManager
+    extends
+        RootTableManager<
+          _$Db,
+          $CustomSkinsTable,
+          CustomSkin,
+          $$CustomSkinsTableFilterComposer,
+          $$CustomSkinsTableOrderingComposer,
+          $$CustomSkinsTableAnnotationComposer,
+          $$CustomSkinsTableCreateCompanionBuilder,
+          $$CustomSkinsTableUpdateCompanionBuilder,
+          (CustomSkin, BaseReferences<_$Db, $CustomSkinsTable, CustomSkin>),
+          CustomSkin,
+          PrefetchHooks Function()
+        > {
+  $$CustomSkinsTableTableManager(_$Db db, $CustomSkinsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CustomSkinsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CustomSkinsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CustomSkinsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> spec = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => CustomSkinsCompanion(
+                id: id,
+                name: name,
+                spec: spec,
+                deleted: deleted,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                required String spec,
+                Value<bool> deleted = const Value.absent(),
+                required DateTime createdAt,
+              }) => CustomSkinsCompanion.insert(
+                id: id,
+                name: name,
+                spec: spec,
+                deleted: deleted,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$CustomSkinsTable, CustomSkin>(table),
+                  BaseReferences<_$Db, $CustomSkinsTable, CustomSkin>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CustomSkinsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$Db,
+      $CustomSkinsTable,
+      CustomSkin,
+      $$CustomSkinsTableFilterComposer,
+      $$CustomSkinsTableOrderingComposer,
+      $$CustomSkinsTableAnnotationComposer,
+      $$CustomSkinsTableCreateCompanionBuilder,
+      $$CustomSkinsTableUpdateCompanionBuilder,
+      (CustomSkin, BaseReferences<_$Db, $CustomSkinsTable, CustomSkin>),
+      CustomSkin,
+      PrefetchHooks Function()
+    >;
 
 class $DbManager {
   final _$Db _db;
@@ -5068,4 +6417,8 @@ class $DbManager {
       $$TodoCategoriesTableTableManager(_db, _db.todoCategories);
   $$TodosTableTableManager get todos =>
       $$TodosTableTableManager(_db, _db.todos);
+  $$NotesTableTableManager get notes =>
+      $$NotesTableTableManager(_db, _db.notes);
+  $$CustomSkinsTableTableManager get customSkins =>
+      $$CustomSkinsTableTableManager(_db, _db.customSkins);
 }

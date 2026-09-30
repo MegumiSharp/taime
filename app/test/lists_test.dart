@@ -43,9 +43,9 @@ void main() {
     final more = KittenParts([...kSkins.where((s) => s.free), kSkinById['bruno']!, kSkinById['minou']!]);
     expect(starter.head.map((h) => h.$1), [Accessory.nessuno]);
     expect(more.neck.map((n) => n.$1), contains(Accessory.papillon));
-    expect(more.eyes, contains(EyeStyle.verdi));
-    expect(more.noseSpot, isTrue);
-    expect(starter.noseSpot, isFalse);
+    expect(more.eyes, contains(EyeStyle.dorati));
+    expect(more.blackNose, isTrue);
+    expect(starter.blackNose, isFalse);
     expect(more.count, greaterThan(starter.count));
     expect(KittenParts.total, greaterThan(more.count));
   });

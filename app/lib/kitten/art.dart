@@ -15,7 +15,7 @@ Future<Directory> _dir() async {
 }
 
 String _name(String skinId, int stage, bool sleeping) =>
-    '${skinId}_${sleeping ? 'sleep' : stage}_v2.png';
+    '${skinId}_${sleeping ? 'sleep' : stage}_v3.png';
 
 Future<String?> kittenArtPath(String skinId, int stage, {bool sleeping = false}) async {
   try {
@@ -30,7 +30,7 @@ Future<String?> kittenArtPath(String skinId, int stage, {bool sleeping = false})
 Future<void> dropOldKittenArt() async {
   try {
     for (final f in (await _dir()).listSync().whereType<File>()) {
-      if (!f.path.endsWith('_v2.png')) f.deleteSync();
+      if (!f.path.endsWith('_v3.png')) f.deleteSync();
     }
   } catch (_) {}
 }

@@ -367,14 +367,6 @@ class KittenPainter extends CustomPainter {
           ..close();
         canvas.drawPath(blaze, fill(_white));
       }
-      if (coat.noseSpot) {
-        // A dark smudge over one side of the nose.
-        canvas.save();
-        canvas.translate(96, 102);
-        canvas.rotate(-0.35);
-        canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: 9, height: 7), fill(base));
-        canvas.restore();
-      }
       if (skin.has(Effect.stelle)) _stars(canvas, head, t, 1);
       canvas.restore();
     });
@@ -434,8 +426,8 @@ class KittenPainter extends CustomPainter {
       }
       // Nose and ω mouth.
       canvas.drawOval(
-        Rect.fromCenter(center: const Offset(100, 102.5), width: 6.5, height: 4.4),
-        fill(_nose),
+        Rect.fromCenter(center: const Offset(100, 102.5), width: coat.blackNose ? 8 : 6.5, height: coat.blackNose ? 5.4 : 4.4),
+        fill(coat.blackNose ? const Color(0xFF2A2324) : _nose),
       );
       final mouth = Path()
         ..moveTo(92.5, 105.5)
@@ -535,6 +527,7 @@ class KittenPainter extends CustomPainter {
         }
       case CoatPattern.soriano:
       case CoatPattern.maculato:
+        if (coat.fourth != null) _variegate(c, Color(coat.fourth!), second, third, _headPatches, _headTicks);
         // The tabby "M" on the forehead, cheek stripes and a few light flecks.
         c.drawPath(
           Path()
@@ -586,6 +579,57 @@ class KittenPainter extends CustomPainter {
         }
       case CoatPattern.tintaUnita:
         break;
+    }
+  }
+
+  // Variegated coat (European): soft warm patches, then light and dark ticks.
+  static const _headPatches = [
+    (Offset(70, 66), 34.0, 22.0),
+    (Offset(132, 62), 30.0, 20.0),
+    (Offset(100, 74), 16.0, 12.0),
+    (Offset(60, 116), 24.0, 16.0),
+    (Offset(142, 118), 22.0, 14.0),
+  ];
+  static const _headTicks = [
+    Offset(78, 52), Offset(122, 50), Offset(66, 80), Offset(136, 78), Offset(88, 70),
+    Offset(114, 70), Offset(52, 110), Offset(150, 108), Offset(74, 126), Offset(128, 126),
+  ];
+  static const _bodyPatches = {
+    Pose.seduto: [(Offset(62, 128), 40.0, 30.0), (Offset(146, 152), 44.0, 34.0), (Offset(78, 180), 40.0, 20.0), (Offset(132, 114), 30.0, 20.0)],
+    Pose.pagnotta: [(Offset(56, 146), 44.0, 30.0), (Offset(148, 140), 44.0, 30.0), (Offset(100, 124), 40.0, 16.0), (Offset(140, 178), 34.0, 18.0)],
+    Pose.dorme: [(Offset(96, 140), 44.0, 24.0), (Offset(146, 150), 40.0, 26.0)],
+  };
+  static const _bodyTicks = {
+    Pose.seduto: [Offset(54, 146), Offset(146, 132), Offset(62, 164), Offset(140, 170), Offset(90, 184), Offset(112, 186), Offset(74, 112), Offset(126, 104)],
+    Pose.pagnotta: [Offset(48, 160), Offset(152, 160), Offset(70, 128), Offset(130, 126), Offset(84, 182), Offset(118, 182)],
+    Pose.dorme: [Offset(104, 134), Offset(128, 138), Offset(150, 146), Offset(118, 168)],
+  };
+
+  void _variegate(
+    Canvas c,
+    Color warm,
+    Color dark,
+    Color light,
+    List<(Offset, double, double)> patches,
+    List<Offset> ticks,
+  ) {
+    for (final (i, (o, w, h)) in patches.indexed) {
+      c.save();
+      c.translate(o.dx, o.dy);
+      c.rotate(i.isEven ? 0.4 : -0.35);
+      c.drawOval(
+        Rect.fromCenter(center: Offset.zero, width: w, height: h),
+        Paint()
+          ..color = warm.withValues(alpha: 0.7)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+      );
+      c.restore();
+    }
+    // Ticking: tiny soft specks, light and dark.
+    for (final (i, o) in ticks.indexed) {
+      final col = (i.isEven ? light : dark).withValues(alpha: i.isEven ? 0.75 : 0.4);
+      c.drawOval(Rect.fromCenter(center: o, width: 3.4, height: 2.4), Paint()..color = col);
+      c.drawOval(Rect.fromCenter(center: o + const Offset(5, 3), width: 2.6, height: 2), Paint()..color = col);
     }
   }
 
@@ -674,7 +718,11 @@ class KittenPainter extends CustomPainter {
           c.drawCircle(o, r, p..color = second);
         }
       case CoatPattern.maculato:
-        // A cream chest, then rows of spots along the sides.
+        // Variegated first (warm patches, ticking), then a cream chest and
+        // uneven spots along the sides.
+        if (coat.fourth != null) {
+          _variegate(c, Color(coat.fourth!), second, third, _bodyPatches[pose]!, _bodyTicks[pose]!);
+        }
         final chest = switch (pose) {
           Pose.seduto => Rect.fromCenter(center: const Offset(100, 140), width: 50, height: 44),
           Pose.pagnotta => Rect.fromCenter(center: const Offset(100, 150), width: 60, height: 30),
@@ -696,10 +744,13 @@ class KittenPainter extends CustomPainter {
           ],
         };
         for (final (i, o) in spots.indexed) {
+          // Uneven spots: two overlapping blobs of different sizes.
           c.save();
           c.translate(o.dx, o.dy);
-          c.rotate(i.isEven ? 0.3 : -0.3);
-          c.drawOval(Rect.fromCenter(center: Offset.zero, width: 10, height: 7), p..color = second);
+          c.rotate(i.isEven ? 0.35 : -0.3);
+          final w = 8.0 + (i * 7 % 5);
+          c.drawOval(Rect.fromCenter(center: Offset.zero, width: w, height: w * 0.62), p..color = second);
+          c.drawOval(Rect.fromCenter(center: Offset(w * 0.35, 1.5), width: w * 0.6, height: w * 0.45), p);
           c.restore();
         }
       case CoatPattern.panda:
@@ -719,6 +770,18 @@ class KittenPainter extends CustomPainter {
   void _tailPattern(Canvas c, Path tail, double w, Coat coat, Color second) {
     final metric = tail.computeMetrics().firstOrNull;
     if (metric == null) return;
+    if (coat.fourth != null) {
+      // Variegated: a warm stretch along the tail.
+      c.drawPath(
+        metric.extractPath(metric.length * 0.15, metric.length * 0.6),
+        Paint()
+          ..color = Color(coat.fourth!).withValues(alpha: 0.55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.7
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
+      );
+    }
     if (coat.pattern == CoatPattern.tigrato ||
         coat.pattern == CoatPattern.soriano ||
         coat.pattern == CoatPattern.maculato) {

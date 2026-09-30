@@ -211,7 +211,8 @@ class Coat {
     this.whiteBelly = false,
     this.whitePaws = false,
     this.blaze = false,
-    this.noseSpot = false,
+    this.blackNose = false,
+    this.fourth,
     this.darkOutline = false,
   });
 
@@ -225,8 +226,12 @@ class Coat {
   final int? third;
   final bool whiteMuzzle, whiteBelly, whitePaws, blaze;
 
-  /// A dark smudge beside the nose (Minou's).
-  final bool noseSpot;
+  /// A black nose instead of the pink one (Minou's).
+  final bool blackNose;
+
+  /// A warm tone mixed into the coat in soft patches: the variegated look
+  /// of a European cat (Wendy's).
+  final int? fourth;
 
   /// For very dark coats the usual brown outline would vanish.
   final bool darkOutline;
@@ -276,11 +281,12 @@ class Skin {
     'base': coat.base,
     'second': coat.second,
     'third': coat.third,
+    'fourth': coat.fourth,
     'muzzle': coat.whiteMuzzle,
     'belly': coat.whiteBelly,
     'paws': coat.whitePaws,
     'blaze': coat.blaze,
-    'noseSpot': coat.noseSpot,
+    'blackNose': coat.blackNose,
     'pose': pose.name,
     'eyes': eyes.name,
     'acc': accessory.name,
@@ -305,11 +311,12 @@ class Skin {
         base: base,
         second: j['second'] as int?,
         third: j['third'] as int?,
+        fourth: j['fourth'] as int?,
         whiteMuzzle: j['muzzle'] == true,
         whiteBelly: j['belly'] == true,
         whitePaws: j['paws'] == true,
         blaze: j['blaze'] == true,
-        noseSpot: j['noseSpot'] == true,
+        blackNose: j['blackNose'] == true || j['noseSpot'] == true,
         darkOutline: _luminance(base) < 0.12,
       ),
       pose: pick(Pose.values, j['pose'], Pose.seduto),
@@ -964,9 +971,10 @@ const List<Skin> kSkins = [
     effect2: Effect.smeraldi,
     coat: Coat(
       pattern: CoatPattern.maculato,
-      base: 0xFFA99D8E,
-      second: 0xFF5C5047,
-      third: 0xFFE9DFD0,
+      base: 0xFFA39A90,
+      second: 0xFF4F453F,
+      third: 0xFFEADFCF,
+      fourth: 0xFFC89A6E,
       whiteMuzzle: true,
     ),
   ),
@@ -975,7 +983,7 @@ const List<Skin> kSkins = [
     name: 'Minou',
     rarity: Rarity.leggendario,
     price: 4800,
-    eyes: EyeStyle.verdi,
+    eyes: EyeStyle.dorati,
     effect: Effect.piumino,
     effect2: Effect.scintille,
     coat: Coat(
@@ -985,7 +993,7 @@ const List<Skin> kSkins = [
       whiteBelly: true,
       whitePaws: true,
       blaze: true,
-      noseSpot: true,
+      blackNose: true,
       darkOutline: true,
     ),
   ),
@@ -1146,9 +1154,9 @@ class KittenParts {
     for (final s in owned) {
       final c = s.coat;
       add(coats, c.base);
-      if (c.pattern != CoatPattern.tintaUnita) add(patterns, (c.pattern, c.second, c.third));
+      if (c.pattern != CoatPattern.tintaUnita) add(patterns, (c.pattern, c.second, c.third, c.fourth));
       muzzle |= c.whiteMuzzle;
-      noseSpot |= c.noseSpot;
+      blackNose |= c.blackNose;
       blaze |= c.blaze;
       belly |= c.whiteBelly;
       paws |= c.whitePaws;
@@ -1164,8 +1172,8 @@ class KittenParts {
   }
 
   final List<int> coats = [];
-  final List<(CoatPattern, int?, int?)> patterns = [(CoatPattern.tintaUnita, null, null)];
-  bool muzzle = false, blaze = false, belly = false, paws = false, noseSpot = false;
+  final List<(CoatPattern, int?, int?, int?)> patterns = [(CoatPattern.tintaUnita, null, null, null)];
+  bool muzzle = false, blaze = false, belly = false, paws = false, blackNose = false;
   final List<EyeStyle> eyes = [EyeStyle.puntini];
   final List<(Accessory, int)> head = [(Accessory.nessuno, 0)];
   final List<(Accessory, int)> neck = [(Accessory.nessuno, 0)];
@@ -1174,7 +1182,7 @@ class KittenParts {
   /// Styles unlocked, out of everything the catalogue has, for the hint.
   int get count =>
       coats.length + patterns.length + eyes.length + head.length + neck.length + effects.length +
-      [muzzle, blaze, belly, paws, noseSpot].where((b) => b).length;
+      [muzzle, blaze, belly, paws, blackNose].where((b) => b).length;
 
   static final int total = KittenParts(kSkins).count;
 }

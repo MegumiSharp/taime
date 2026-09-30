@@ -191,12 +191,12 @@ class _KittenMakerState extends State<_KittenMaker> {
                     _Section(
                       title: 'Motivo',
                       children: [
-                        for (final (pat, second, third) in p.patterns)
+                        for (final (pat, second, third, fourth) in p.patterns)
                           _Thumb(
                             label: pat.label,
-                            skin: _skin({'pattern': pat.name, 'second': second, 'third': third}),
+                            skin: _skin({'pattern': pat.name, 'second': second, 'third': third, 'fourth': fourth}),
                             selected: pattern == pat && skin.coat.second == second && skin.coat.third == third,
-                            onTap: () => _set({'pattern': pat.name, 'second': second, 'third': third}),
+                            onTap: () => _set({'pattern': pat.name, 'second': second, 'third': third, 'fourth': fourth}),
                           ),
                       ],
                     ),
@@ -223,19 +223,19 @@ class _KittenMakerState extends State<_KittenMaker> {
                             ),
                         ],
                       ),
-                    if (p.noseSpot)
+                    if (p.blackNose)
                       _Section(
                         title: 'Naso',
                         children: [
                           SoftChip(
-                            label: 'Pulito',
-                            selected: !skin.coat.noseSpot,
-                            onTap: () => _set({'noseSpot': false}),
+                            label: 'Rosa',
+                            selected: !skin.coat.blackNose,
+                            onTap: () => _set({'blackNose': false}),
                           ),
                           SoftChip(
-                            label: 'Con la macchiolina',
-                            selected: skin.coat.noseSpot,
-                            onTap: () => _set({'noseSpot': true}),
+                            label: 'Nero',
+                            selected: skin.coat.blackNose,
+                            onTap: () => _set({'blackNose': true}),
                           ),
                         ],
                       ),

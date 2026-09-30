@@ -1,6 +1,9 @@
-# Taime — Specifiche 2.4
+# Taime — Specifiche 2.4.1
 
 App Android personale per concentrarsi e tracciare il tempo, nello spirito di Forest: mentre lavori un gattino cresce, il tempo diventa crocchette per comprare nuovi gattini, i giorni riempiono un recinto. Nessun account, nessun server: dati in SQLite sul telefono, con backup.
+
+## Novità 2.4.1
+- Minou: naso nero e occhi gialli. Wendy: mantello europeo variegato (chiazze calde nocciola sfumate, picchiettature chiare e scure, macchie irregolari, coda con tono caldo). In "Crea il tuo gattino" il naso può essere rosa o nero.
 
 ## Novità 2.4
 - **Wendy e Minou leggendarie**, ridisegnate dalle foto delle gatte vere: Wendy europea maculata (mantello "maculato" nuovo: M in fronte, righe dagli occhi, macchie sui fianchi, petto chiaro, coda ad anelli) con farfalle e scintille smeraldo; Minou tuxedo con la striscia bianca, la macchiolina sul naso e il piumino giallo che dondola. Chi le aveva già le tiene.

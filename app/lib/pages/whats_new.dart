@@ -12,8 +12,8 @@ const _news = <(IconData, String, String)>[
   (
     Icons.auto_awesome_rounded,
     'Wendy e Minou leggendarie',
-    'Ridisegnate dalle foto: Wendy europea maculata con gli occhi verdi, farfalle e scintille smeraldo; '
-        'Minou tuxedo con la macchiolina sul naso e il suo piumino giallo. Se le avevi già, sono ancora tue.',
+    'Ridisegnate dalle foto: Wendy europea variegata con gli occhi verdi, farfalle e scintille smeraldo; '
+        'Minou tuxedo con il naso nero, gli occhi gialli e il suo piumino giallo. Se le avevi già, sono ancora tue.',
   ),
   (
     Icons.wb_sunny_rounded,

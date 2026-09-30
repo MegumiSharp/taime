@@ -33,7 +33,7 @@ extension PoseInfo on Pose {
   };
 }
 
-enum CoatPattern { tintaUnita, tigrato, calico, point, macchie, soriano, panda }
+enum CoatPattern { tintaUnita, tigrato, calico, point, macchie, soriano, panda, maculato }
 
 extension CoatPatternInfo on CoatPattern {
   String get label => switch (this) {
@@ -44,6 +44,7 @@ extension CoatPatternInfo on CoatPattern {
     CoatPattern.macchie => 'A macchie',
     CoatPattern.soriano => 'Soriano',
     CoatPattern.panda => 'Panda',
+    CoatPattern.maculato => 'Maculato',
   };
 }
 
@@ -165,6 +166,9 @@ enum Effect {
   fulmini,
   foglie,
   braci,
+  piumino,
+  smeraldi,
+  farfalle,
 }
 
 extension EffectInfo on Effect {
@@ -191,6 +195,9 @@ extension EffectInfo on Effect {
     Effect.fulmini => 'Fulmini',
     Effect.foglie => 'Foglie',
     Effect.braci => 'Braci',
+    Effect.piumino => 'Piumino giallo',
+    Effect.smeraldi => 'Scintille smeraldo',
+    Effect.farfalle => 'Farfalle',
   };
 }
 
@@ -204,6 +211,7 @@ class Coat {
     this.whiteBelly = false,
     this.whitePaws = false,
     this.blaze = false,
+    this.noseSpot = false,
     this.darkOutline = false,
   });
 
@@ -216,6 +224,9 @@ class Coat {
   /// Second calico patch colour.
   final int? third;
   final bool whiteMuzzle, whiteBelly, whitePaws, blaze;
+
+  /// A dark smudge beside the nose (Minou's).
+  final bool noseSpot;
 
   /// For very dark coats the usual brown outline would vanish.
   final bool darkOutline;
@@ -269,6 +280,7 @@ class Skin {
     'belly': coat.whiteBelly,
     'paws': coat.whitePaws,
     'blaze': coat.blaze,
+    'noseSpot': coat.noseSpot,
     'pose': pose.name,
     'eyes': eyes.name,
     'acc': accessory.name,
@@ -297,6 +309,7 @@ class Skin {
         whiteBelly: j['belly'] == true,
         whitePaws: j['paws'] == true,
         blaze: j['blaze'] == true,
+        noseSpot: j['noseSpot'] == true,
         darkOutline: _luminance(base) < 0.12,
       ),
       pose: pick(Pose.values, j['pose'], Pose.seduto),
@@ -926,6 +939,8 @@ const List<Skin> kSkins = [
     rarity: Rarity.comune,
     price: 120,
     pose: Pose.pagnotta,
+    accessory2: Accessory.papillon,
+    accessory2Color: 0xFFE57B7B,
     coat: Coat(pattern: CoatPattern.tintaUnita, base: _chocolate, whiteMuzzle: true),
   ),
   Skin(
@@ -937,28 +952,40 @@ const List<Skin> kSkins = [
     accessoryColor: 0xFFE8646E,
     coat: Coat(pattern: CoatPattern.tintaUnita, base: 0xFFFBEFE3, whiteMuzzle: true),
   ),
+  // Wendy and Minou are drawn from two real cats: keep them close to the
+  // photos (green eyes, spotted tabby; tuxedo with a smudge on the nose).
   Skin(
     id: 'wendy',
     name: 'Wendy',
-    rarity: Rarity.raro,
-    price: 450,
+    rarity: Rarity.leggendario,
+    price: 4800,
     eyes: EyeStyle.verdi,
-    coat: Coat(pattern: CoatPattern.soriano, base: 0xFFB5A290, second: 0xFF6F5D50, third: 0xFFD8CBBE),
+    effect: Effect.farfalle,
+    effect2: Effect.smeraldi,
+    coat: Coat(
+      pattern: CoatPattern.maculato,
+      base: 0xFFA99D8E,
+      second: 0xFF5C5047,
+      third: 0xFFE9DFD0,
+      whiteMuzzle: true,
+    ),
   ),
   Skin(
     id: 'minou',
     name: 'Minou',
-    rarity: Rarity.raro,
-    price: 480,
-    eyes: EyeStyle.dorati,
-    accessory2: Accessory.papillon,
-    accessory2Color: 0xFFE57B7B,
+    rarity: Rarity.leggendario,
+    price: 4800,
+    eyes: EyeStyle.verdi,
+    effect: Effect.piumino,
+    effect2: Effect.scintille,
     coat: Coat(
       pattern: CoatPattern.tintaUnita,
-      base: _black,
+      base: 0xFF3E3637,
       whiteMuzzle: true,
       whiteBelly: true,
       whitePaws: true,
+      blaze: true,
+      noseSpot: true,
       darkOutline: true,
     ),
   ),
@@ -1121,6 +1148,7 @@ class KittenParts {
       add(coats, c.base);
       if (c.pattern != CoatPattern.tintaUnita) add(patterns, (c.pattern, c.second, c.third));
       muzzle |= c.whiteMuzzle;
+      noseSpot |= c.noseSpot;
       blaze |= c.blaze;
       belly |= c.whiteBelly;
       paws |= c.whitePaws;
@@ -1137,7 +1165,7 @@ class KittenParts {
 
   final List<int> coats = [];
   final List<(CoatPattern, int?, int?)> patterns = [(CoatPattern.tintaUnita, null, null)];
-  bool muzzle = false, blaze = false, belly = false, paws = false;
+  bool muzzle = false, blaze = false, belly = false, paws = false, noseSpot = false;
   final List<EyeStyle> eyes = [EyeStyle.puntini];
   final List<(Accessory, int)> head = [(Accessory.nessuno, 0)];
   final List<(Accessory, int)> neck = [(Accessory.nessuno, 0)];
@@ -1146,7 +1174,7 @@ class KittenParts {
   /// Styles unlocked, out of everything the catalogue has, for the hint.
   int get count =>
       coats.length + patterns.length + eyes.length + head.length + neck.length + effects.length +
-      [muzzle, blaze, belly, paws].where((b) => b).length;
+      [muzzle, blaze, belly, paws, noseSpot].where((b) => b).length;
 
   static final int total = KittenParts(kSkins).count;
 }

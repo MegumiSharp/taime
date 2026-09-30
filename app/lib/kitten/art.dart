@@ -15,7 +15,7 @@ Future<Directory> _dir() async {
 }
 
 String _name(String skinId, int stage, bool sleeping) =>
-    '${skinId}_${sleeping ? 'sleep' : stage}_v1.png';
+    '${skinId}_${sleeping ? 'sleep' : stage}_v2.png';
 
 Future<String?> kittenArtPath(String skinId, int stage, {bool sleeping = false}) async {
   try {
@@ -24,6 +24,15 @@ Future<String?> kittenArtPath(String skinId, int stage, {bool sleeping = false})
   } catch (_) {
     return null;
   }
+}
+
+/// Removes pictures drawn by older versions of the painter (other suffix).
+Future<void> dropOldKittenArt() async {
+  try {
+    for (final f in (await _dir()).listSync().whereType<File>()) {
+      if (!f.path.endsWith('_v2.png')) f.deleteSync();
+    }
+  } catch (_) {}
 }
 
 /// Forgets the pictures of [skinId] (a kitten you made was changed).

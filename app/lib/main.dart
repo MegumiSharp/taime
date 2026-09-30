@@ -121,6 +121,7 @@ Future<void> main() async {
     await db.setPref('fullScreenAsked', '1');
     await requestFullScreenAlerts();
   }
+  await dropOldKittenArt();
   await ensureKittenArt(prefs.activeSkin);
   await tracker.materialize();
   await tracker.sync();

@@ -64,9 +64,9 @@ void main() {
         (skin: kSkins.first, pose: Pose.seduto, growth: 1.0, anim: act(a, p)),
     ], cols: 5);
     await _sheet('detail', [
-      for (final id in const ['biscotto', 'brioche', 'nocciola', 'diavoletto', 'astronauta', 'zenzero', 'wendy', 'minou', 'panda'])
-        (skin: kSkinById[id]!, pose: kSkinById[id]!.pose, growth: 1.0, anim: null),
-    ], cols: 3, cell: 420);
+      for (final (id, pose, t) in const [('wendy', Pose.seduto, 0.4), ('minou', Pose.seduto, 1.2), ('wendy', Pose.pagnotta, 2.0), ('minou', Pose.pagnotta, 2.7)])
+        (skin: kSkinById[id]!, pose: pose, growth: 1.0, anim: KittenAnim()..t = t),
+    ], cols: 2, cell: 420);
     final demo = kSkins.first;
     await _sheet('growth_poses', [
       for (final p in Pose.values)

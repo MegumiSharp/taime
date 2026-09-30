@@ -223,6 +223,22 @@ class _KittenMakerState extends State<_KittenMaker> {
                             ),
                         ],
                       ),
+                    if (p.noseSpot)
+                      _Section(
+                        title: 'Naso',
+                        children: [
+                          SoftChip(
+                            label: 'Pulito',
+                            selected: !skin.coat.noseSpot,
+                            onTap: () => _set({'noseSpot': false}),
+                          ),
+                          SoftChip(
+                            label: 'Con la macchiolina',
+                            selected: skin.coat.noseSpot,
+                            onTap: () => _set({'noseSpot': true}),
+                          ),
+                        ],
+                      ),
                     if (p.belly || p.paws)
                       _Section(
                         title: 'Pancia e zampe',
@@ -253,7 +269,7 @@ class _KittenMakerState extends State<_KittenMaker> {
                               EyeStyle.puntini => const Color(0xFF3B2925),
                               EyeStyle.dorati => const Color(0xFFF0CD6A),
                               EyeStyle.azzurri => const Color(0xFFA9CFEF),
-                              EyeStyle.verdi => const Color(0xFFA9D39A),
+                              EyeStyle.verdi => const Color(0xFFB4D88A),
                             },
                             selected: skin.eyes == e,
                             onTap: () => _set({'eyes': e.name}),

@@ -1,6 +1,10 @@
-# Taime — Specifiche 2.3.1
+# Taime — Specifiche 2.4
 
 App Android personale per concentrarsi e tracciare il tempo, nello spirito di Forest: mentre lavori un gattino cresce, il tempo diventa crocchette per comprare nuovi gattini, i giorni riempiono un recinto. Nessun account, nessun server: dati in SQLite sul telefono, con backup.
+
+## Novità 2.4
+- **Wendy e Minou leggendarie**, ridisegnate dalle foto delle gatte vere: Wendy europea maculata (mantello "maculato" nuovo: M in fronte, righe dagli occhi, macchie sui fianchi, petto chiaro, coda ad anelli) con farfalle e scintille smeraldo; Minou tuxedo con la striscia bianca, la macchiolina sul naso e il piumino giallo che dondola. Chi le aveva già le tiene.
+- "Crea il tuo gattino": la macchiolina sul naso si sblocca con Minou; il papillon passa a Bruno.
 
 ## Novità 2.3.1
 - La scheda "Oggi" (ore, obiettivo, attività, giorni di fila) sta sotto "Inizia" a timer fermo o in pausa; mentre lavori restano solo dei trattini, uno per ogni mezz'ora dell'obiettivo, colorati per attività.

@@ -367,6 +367,14 @@ class KittenPainter extends CustomPainter {
           ..close();
         canvas.drawPath(blaze, fill(_white));
       }
+      if (coat.noseSpot) {
+        // A dark smudge over one side of the nose.
+        canvas.save();
+        canvas.translate(96, 102);
+        canvas.rotate(-0.35);
+        canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: 9, height: 7), fill(base));
+        canvas.restore();
+      }
       if (skin.has(Effect.stelle)) _stars(canvas, head, t, 1);
       canvas.restore();
     });
@@ -392,7 +400,7 @@ class KittenPainter extends CustomPainter {
             final r = 7.4 * eyeScale;
             final iris = switch (skin.eyes) {
               EyeStyle.dorati => const Color(0xFFF0CD6A),
-              EyeStyle.verdi => const Color(0xFFA9D39A),
+              EyeStyle.verdi => const Color(0xFFB4D88A),
               _ => const Color(0xFFA9CFEF),
             };
             canvas.drawOval(Rect.fromCenter(center: c, width: r * 2, height: r * 2 * open), fill(iris));
@@ -526,6 +534,7 @@ class KittenPainter extends CustomPainter {
           c.drawLine(a, b, s);
         }
       case CoatPattern.soriano:
+      case CoatPattern.maculato:
         // The tabby "M" on the forehead, cheek stripes and a few light flecks.
         c.drawPath(
           Path()
@@ -541,6 +550,17 @@ class KittenPainter extends CustomPainter {
         s.strokeWidth = 5;
         for (final (a, b) in cheeks) {
           c.drawLine(a, b, s);
+        }
+        if (coat.pattern == CoatPattern.maculato) {
+          // The dark line from the outer corner of each eye.
+          final liner = Paint()
+            ..color = second
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.6
+            ..strokeCap = StrokeCap.round;
+          c.drawLine(const Offset(62, 96), const Offset(52, 100), liner);
+          c.drawLine(const Offset(138, 96), const Offset(148, 100), liner);
+          break;
         }
         for (final o in const [Offset(76, 60), Offset(126, 58), Offset(66, 116), Offset(136, 118)]) {
           c.drawOval(Rect.fromCenter(center: o, width: 7, height: 4), p..color = third);
@@ -653,6 +673,35 @@ class KittenPainter extends CustomPainter {
         for (final (o, r) in spots) {
           c.drawCircle(o, r, p..color = second);
         }
+      case CoatPattern.maculato:
+        // A cream chest, then rows of spots along the sides.
+        final chest = switch (pose) {
+          Pose.seduto => Rect.fromCenter(center: const Offset(100, 140), width: 50, height: 44),
+          Pose.pagnotta => Rect.fromCenter(center: const Offset(100, 150), width: 60, height: 30),
+          Pose.dorme => Rect.zero,
+        };
+        c.drawOval(chest, p..color = third);
+        final spots = switch (pose) {
+          Pose.seduto => const [
+            Offset(58, 136), Offset(52, 154), Offset(58, 172), Offset(70, 186),
+            Offset(142, 136), Offset(148, 154), Offset(142, 172), Offset(130, 186),
+            Offset(72, 122), Offset(128, 122), Offset(68, 150), Offset(132, 150),
+          ],
+          Pose.pagnotta => const [
+            Offset(50, 150), Offset(44, 168), Offset(62, 132), Offset(66, 176),
+            Offset(150, 150), Offset(156, 168), Offset(138, 132), Offset(134, 176),
+          ],
+          Pose.dorme => const [
+            Offset(96, 138), Offset(118, 134), Offset(140, 140), Offset(158, 152), Offset(110, 156), Offset(132, 160),
+          ],
+        };
+        for (final (i, o) in spots.indexed) {
+          c.save();
+          c.translate(o.dx, o.dy);
+          c.rotate(i.isEven ? 0.3 : -0.3);
+          c.drawOval(Rect.fromCenter(center: Offset.zero, width: 10, height: 7), p..color = second);
+          c.restore();
+        }
       case CoatPattern.panda:
         // The dark shoulder band.
         final band = switch (pose) {
@@ -670,7 +719,9 @@ class KittenPainter extends CustomPainter {
   void _tailPattern(Canvas c, Path tail, double w, Coat coat, Color second) {
     final metric = tail.computeMetrics().firstOrNull;
     if (metric == null) return;
-    if (coat.pattern == CoatPattern.tigrato || coat.pattern == CoatPattern.soriano) {
+    if (coat.pattern == CoatPattern.tigrato ||
+        coat.pattern == CoatPattern.soriano ||
+        coat.pattern == CoatPattern.maculato) {
       final s = Paint()
         ..color = second
         ..style = PaintingStyle.stroke
@@ -1575,6 +1626,70 @@ class KittenPainter extends CustomPainter {
           final col = i.isEven ? const Color(0xFFF4A261) : const Color(0xFFF6D46E);
           c.drawCircle(o, 5.5, Paint()..color = col.withValues(alpha: 0.18 * a));
           c.drawCircle(o, 2.2 + (i % 3) * 0.6, Paint()..color = col.withValues(alpha: a));
+        }
+      case Effect.piumino:
+        // A yellow feather toy on a string, swinging beside the kitten.
+        final swing = math.sin(t * 1.7) * 0.32;
+        const pivot = Offset(184, -20);
+        final tip = pivot + Offset(math.sin(swing) * 74, math.cos(swing) * 74);
+        c.drawPath(
+          Path()
+            ..moveTo(pivot.dx, pivot.dy)
+            ..quadraticBezierTo((pivot.dx + tip.dx) / 2 + 6, (pivot.dy + tip.dy) / 2, tip.dx, tip.dy),
+          Paint()
+            ..color = const Color(0x998E7A6E)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4,
+        );
+        for (var k = 0; k < 9; k++) {
+          final a = -math.pi / 2 + (k - 4) * 0.32 + swing * 0.6 + math.pi;
+          c.save();
+          c.translate(tip.dx, tip.dy);
+          c.rotate(a + math.sin(t * 6 + k) * 0.08);
+          c.drawOval(
+            Rect.fromCenter(center: const Offset(0, 11), width: 6.5, height: 20),
+            Paint()..color = (k.isEven ? const Color(0xFFF2D34B) : const Color(0xFFE8C22E)).withValues(alpha: 0.95),
+          );
+          c.restore();
+        }
+        c.drawCircle(tip, 3.6, Paint()..color = const Color(0xFFD9A93A));
+      case Effect.smeraldi:
+        for (var i = 0; i < 5; i++) {
+          final ang = t * 0.9 + i * 2 * math.pi / 5;
+          final o = Offset(100 + math.cos(ang) * 84, 108 + math.sin(ang) * 36 - 12);
+          final k = 0.5 + 0.5 * math.sin(t * 2.6 + i * 1.3);
+          final col = i.isEven ? const Color(0xFF7FD6A4) : const Color(0xFFF2D27C);
+          c.drawCircle(o, 7 * k + 2, Paint()..color = col.withValues(alpha: 0.12 * k));
+          _sparkle(c, o, 1.8 + 2.2 * k, col.withValues(alpha: 0.45 + 0.55 * k));
+        }
+      case Effect.farfalle:
+        const wings = [Color(0xFFBFE08F), Color(0xFFF6C49B)];
+        for (var i = 0; i < 2; i++) {
+          // A wide loop around the kitten, never across the face.
+          final p = t * (0.45 + i * 0.12) + i * math.pi;
+          final o = Offset(100 + math.cos(p) * 94, 96 + math.sin(p) * 82);
+          final flap = math.sin(t * 16 + i) * 0.5 + 0.5;
+          for (final side in const [-1.0, 1.0]) {
+            c.save();
+            c.translate(o.dx, o.dy);
+            c.scale(side * (0.3 + 0.7 * flap), 1);
+            final w = Path()
+              ..addOval(Rect.fromCenter(center: const Offset(5, -3), width: 10, height: 8))
+              ..addOval(Rect.fromCenter(center: const Offset(4, 4), width: 7, height: 7));
+            c.drawPath(w, Paint()..color = wings[i]);
+            c.drawPath(
+              w,
+              Paint()
+                ..color = const Color(0x886B5A50)
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1,
+            );
+            c.restore();
+          }
+          c.drawLine(o + const Offset(0, -4.5), o + const Offset(0, 4.5), Paint()
+            ..color = const Color(0xFF6B5A50)
+            ..strokeWidth = 1.8
+            ..strokeCap = StrokeCap.round);
         }
       default:
         break;

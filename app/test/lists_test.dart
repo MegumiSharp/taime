@@ -23,7 +23,7 @@ void main() {
     final wendy = kSkinById['wendy']!;
     final look = jsonDecode(jsonEncode(wendy.lookJson())) as Map<String, Object?>;
     final copy = Skin.fromLook('${kCustomPrefix}1', 'Mia', look);
-    expect(copy.coat.pattern, CoatPattern.soriano);
+    expect(copy.coat.pattern, CoatPattern.maculato);
     expect(copy.coat.base, wendy.coat.base);
     expect(copy.eyes, EyeStyle.verdi);
     expect(copy.isCustom, isTrue);
@@ -40,10 +40,12 @@ void main() {
 
   test('owned kittens unlock their styles', () {
     final starter = KittenParts(kSkins.where((s) => s.free));
-    final more = KittenParts([...kSkins.where((s) => s.free), kSkinById['minou']!]);
+    final more = KittenParts([...kSkins.where((s) => s.free), kSkinById['bruno']!, kSkinById['minou']!]);
     expect(starter.head.map((h) => h.$1), [Accessory.nessuno]);
     expect(more.neck.map((n) => n.$1), contains(Accessory.papillon));
-    expect(more.eyes, contains(EyeStyle.dorati));
+    expect(more.eyes, contains(EyeStyle.verdi));
+    expect(more.noseSpot, isTrue);
+    expect(starter.noseSpot, isFalse);
     expect(more.count, greaterThan(starter.count));
     expect(KittenParts.total, greaterThan(more.count));
   });

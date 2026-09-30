@@ -6,41 +6,25 @@ import '../theme.dart';
 import '../ui/widgets.dart';
 
 /// Bump when there is something new to tell: the dialog shows once per value.
-const String kNewsVersion = '2.3';
+const String kNewsVersion = '2.4';
 
 const _news = <(IconData, String, String)>[
   (
+    Icons.auto_awesome_rounded,
+    'Wendy e Minou leggendarie',
+    'Ridisegnate dalle foto: Wendy europea maculata con gli occhi verdi, farfalle e scintille smeraldo; '
+        'Minou tuxedo con la macchiolina sul naso e il suo piumino giallo. Se le avevi già, sono ancora tue.',
+  ),
+  (
     Icons.wb_sunny_rounded,
-    'Le ore di oggi in grande',
-    'A timer fermo o in pausa, in cima al Focus: ore, obiettivo e giorni di fila.',
+    'Ore di oggi sotto Inizia',
+    'A timer fermo o in pausa la scheda Oggi sta sotto Inizia; mentre lavori restano solo i trattini dell\'obiettivo.',
   ),
-  (
-    Icons.notifications_active_rounded,
-    'Controllo delle notifiche',
-    'In Impostazioni: vedi cosa blocca i promemoria, lo sistemi con un tocco e provi la pausa.',
-  ),
-  (Icons.widgets_rounded, 'Widget dei to-do', 'I to-do di oggi sulla schermata Home, da spuntare senza aprire l\'app.'),
-  (
-    Icons.history_rounded,
-    'To-do rimasti indietro',
-    'In cima a Oggi, con "Tutti a oggi". Quelli senza data dicono da quanti giorni aspettano.',
-  ),
-  (Icons.search_rounded, 'Ricerca', 'Nei to-do e nelle note, dalla lente in alto.'),
-  (
-    Icons.checklist_rounded,
-    'Note con caselle e fissate',
-    'Liste da spuntare dentro le note; tieni premuta una nota per fissarla in alto.',
-  ),
-  (
-    Icons.task_alt_rounded,
-    'Focus da un to-do',
-    'Alla fine della sessione Taime ti chiede se l\'hai finito e lo spunta per te.',
-  ),
-  (Icons.brush_rounded, 'Gattini più tuoi', 'In "Crea il tuo gattino" scegli il colore degli accessori e due effetti.'),
   (
     Icons.edit_note_rounded,
-    'Dalla 2.2',
-    'Note, to-do per Oggi / Settimana / Più avanti, Crea il tuo gattino, 17 gattini nuovi (Wendy e Minou!) e lo schermo che si accende alla pausa.',
+    'Dalla 2.3',
+    'Controllo delle notifiche, widget dei to-do, to-do rimasti indietro, ricerca, note con caselle e fissate, '
+        'focus da un to-do e gattini con colori ed effetti a scelta.',
   ),
 ];
 
@@ -58,7 +42,13 @@ Future<void> showWhatsNew(BuildContext context) {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 18),
-              KittenView(skin: skinById('wendy'), size: 110, showcase: true),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  KittenView(skin: skinById('wendy'), size: 104, showcase: true),
+                  KittenView(skin: skinById('minou'), size: 104, showcase: true),
+                ],
+              ),
               Text('Novità di Taime', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 8),
               Flexible(

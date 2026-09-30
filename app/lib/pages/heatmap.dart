@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../app.dart';
@@ -42,8 +44,8 @@ int goalStreak(Map<DateTime, double> perDay, double goalMinutes, DateTime now) {
 
 /// Today at a glance: hours per activity, the daily goal and the streak.
 ///
-/// [hero] is the big version shown on top of the Focus page while the timer
-/// is stopped or paused: the hours of the day come first.
+/// [hero] is the big card shown under "Inizia" while the timer is stopped or
+/// paused; otherwise only a row of dashes, one per half hour of the goal.
 class TodayCard extends StatelessWidget {
   const TodayCard({super.key, required this.goalMinutes, this.now, this.hero = false});
   final int goalMinutes;
@@ -211,27 +213,40 @@ class TodayCard extends StatelessWidget {
                 );
               }
 
-              return Container(
-                padding: const EdgeInsets.all(16),
-                decoration: decoration,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              // While working: only dashes, one per half hour of the goal,
+              // coloured by the activity that filled them. No text.
+              const slot = 30.0;
+              final slots = (math.max(goalMinutes.toDouble(), done) / slot).ceil().clamp(4, 24);
+              Color colorAt(double minute) {
+                var acc = 0.0;
+                for (final e in sorted) {
+                  acc += e.value;
+                  if (minute < acc) return colorOf(e.key);
+                }
+                return sorted.isEmpty ? tc.accent : colorOf(sorted.last.key);
+              }
+
+              return Semantics(
+                label: goalText == null ? 'Oggi $doneText' : 'Oggi $goalText',
+                child: Row(
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text('Oggi', style: Theme.of(context).textTheme.titleSmall),
-                        const SizedBox(width: 10),
-                        Text(goalText ?? doneText, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                        const Spacer(),
-                        ?streakChip,
-                        if (streakChip == null && reached) Icon(Icons.emoji_events_rounded, size: 20, color: tc.accent),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    bar,
-                    const SizedBox(height: 10),
-                    legend,
+                    for (var i = 0; i < slots; i++) ...[
+                      if (i > 0) const SizedBox(width: 5),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: Container(
+                            height: 6,
+                            color: tc.raised,
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor: ((done - i * slot) / slot).clamp(0.0, 1.0),
+                              child: Container(color: colorAt(i * slot)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               );

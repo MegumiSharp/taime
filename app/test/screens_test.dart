@@ -55,8 +55,8 @@ void main() {
     await db.setPref('dailyGoalMin', '180');
   }
 
-  Future<void> show(WidgetTester tester, Widget page, {bool dark = false, double textScale = 1}) async {
-    tester.view.physicalSize = const Size(360, 640);
+  Future<void> show(WidgetTester tester, Widget page, {bool dark = false, double textScale = 1, double height = 640}) async {
+    tester.view.physicalSize = Size(360, height);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final s = Settings(await tester.runAsync(db.allPrefs) ?? const {});
@@ -135,6 +135,25 @@ void main() {
     expect(find.text('latte'), findsOneWidget);
     expect(tester.takeException(), isNull);
     listsView.value = ListsView.todo;
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+  }, timeout: const Timeout(Duration(seconds: 60)));
+
+  testWidgets('Focus with the timer running: just the dashes', (tester) async {
+    await tester.runAsync(() async {
+      await seed();
+      final acts = await db.watchActivities().first;
+      await tracker.start(acts.first.id);
+    });
+    await show(tester, const FocusPage(settings: Settings({'dailyGoalMin': '180'})), height: 1400);
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.textContaining('Annulla'), findsOneWidget); // first 10 s: cancel instead of pause
+    expect(find.text('Oggi'), findsNothing); // the big card is only at rest
+    expect(find.bySemanticsLabel(RegExp(r'^Oggi ')), findsOneWidget);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 2));
   }, timeout: const Timeout(Duration(seconds: 60)));

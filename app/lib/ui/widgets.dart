@@ -516,8 +516,17 @@ class Live<T> extends StatefulWidget {
 }
 
 class _LiveState<T> extends State<Live<T>> {
-  late Stream<T> _stream = widget.stream();
-  late Object? _id = widget.id;
+  late Stream<T> _stream;
+  late Object? _id;
+
+  // Set here, not lazily: a lazy `_id` would first be read after the widget
+  // already changed, and the change would go unnoticed.
+  @override
+  void initState() {
+    super.initState();
+    _id = widget.id;
+    _stream = widget.stream();
+  }
 
   @override
   void didUpdateWidget(Live<T> old) {

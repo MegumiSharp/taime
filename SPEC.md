@@ -1,9 +1,13 @@
-# Taime — Specifiche 2.3
+# Taime — Specifiche 2.3.1
 
 App Android personale per concentrarsi e tracciare il tempo, nello spirito di Forest: mentre lavori un gattino cresce, il tempo diventa crocchette per comprare nuovi gattini, i giorni riempiono un recinto. Nessun account, nessun server: dati in SQLite sul telefono, con backup.
 
+## Novità 2.3.1
+- La scheda "Oggi" (ore, obiettivo, attività, giorni di fila) sta sotto "Inizia" a timer fermo o in pausa; mentre lavori restano solo dei trattini, uno per ogni mezz'ora dell'obiettivo, colorati per attività.
+- Corretto: in 2.3.0 il Focus poteva non accorgersi che il timer era partito (il timer contava comunque).
+
 ## Novità 2.3
-- **Ore di oggi in grande** in cima al Focus quando il timer è fermo o in pausa (ore, barra per attività, obiettivo, giorni di fila); mentre lavori resta la scheda piccola in basso. Il contatore dei gatti della sessione è in alto accanto alle crocchette, fuori dal cerchio; il cuscino del gattino sta dentro la bolla.
+- **Ore di oggi in grande** nel Focus quando il timer è fermo o in pausa (ore, barra per attività, obiettivo, giorni di fila); mentre lavori resta la scheda piccola in basso. Il contatore dei gatti della sessione è in alto accanto alle crocchette, fuori dal cerchio; il cuscino del gattino sta dentro la bolla.
 - **Controlla le notifiche** (Impostazioni): permessi, canali, sveglie precise, schermo che si accende, batteria, avvio automatico su Xiaomi; ogni problema con "Sistema"; prove: promemoria adesso, pausa tra 10 secondi a schermo spento, to-do. I promemoria vengono programmati prima di ogni altra cosa e, se il telefono rifiuta le sveglie precise, ripiegano su modalità meno precise invece di sparire.
 - **Widget dei to-do di oggi** (fino a 5, spunta dal widget, "+" per un nuovo to-do).
 - **To-do**: "Rimasti indietro" in cima a Oggi con "Tutti a oggi"; quelli senza data mostrano "da N giorni"; ricerca (senza badare ad accenti e maiuscole).

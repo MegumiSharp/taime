@@ -154,16 +154,6 @@ class _FocusPageState extends State<FocusPage> {
               note: focusNote,
               onTap: () => _pickActivity(context, session, acts),
             ),
-            AnimatedSize(
-              duration: Motion.of(context, Motion.slow),
-              curve: Motion.curve,
-              child: !running || paused
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: TodayCard(goalMinutes: s.dailyGoalMin, now: _now, hero: true),
-                    )
-                  : const SizedBox(width: double.infinity),
-            ),
             const SizedBox(height: 14),
             _Scene(
               skin: skin,
@@ -232,13 +222,28 @@ class _FocusPageState extends State<FocusPage> {
               onResume: () => tracker.resume(),
               onStop: () => _stop(context, session!, segs),
             ),
-            if (running && !paused) ...[const SizedBox(height: 24), TodayCard(goalMinutes: s.dailyGoalMin, now: _now)],
+            const SizedBox(height: 22),
+            // Today: the big card at rest or in pause, just the dashes while working.
+            AnimatedSize(
+              duration: Motion.of(context, Motion.slow),
+              curve: Motion.curve,
+              child: AnimatedSwitcher(
+                duration: Motion.of(context, Motion.slow),
+                child: !running || paused
+                    ? TodayCard(key: const ValueKey('today'), goalMinutes: s.dailyGoalMin, now: _now, hero: true)
+                    : Padding(
+                        key: const ValueKey('dashes'),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        child: TodayCard(goalMinutes: s.dailyGoalMin, now: _now),
+                      ),
+              ),
+            ),
             AnimatedSwitcher(
               duration: Motion.of(context, Motion.slow),
               child: running
                   ? const SizedBox(height: 12)
                   : Padding(
-                      padding: const EdgeInsets.only(top: 24),
+                      padding: const EdgeInsets.only(top: 12),
                       child: Column(
                         children: [
                           GestureDetector(

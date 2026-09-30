@@ -16,7 +16,11 @@ import '../theme.dart';
 import '../ui/motion.dart';
 import '../ui/widgets.dart';
 import 'activity_picker.dart';
+import 'notif_check.dart';
 import 'onboarding.dart';
+import 'whats_new.dart';
+import '../todo/notes.dart' show resyncNoteReminders;
+import '../todo/todo_sync.dart' show pushTodoWidget, resyncTodoReminders;
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -35,7 +39,7 @@ class SettingsPage extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
+                      IconButton(tooltip: 'Indietro', onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
                       const SizedBox(width: 4),
                       Text('Impostazioni', style: Theme.of(context).textTheme.headlineSmall),
                     ],
@@ -44,6 +48,19 @@ class SettingsPage extends StatelessWidget {
                   _Section(title: 'Aspetto', children: [_Appearance(s: s)]),
                   _Section(title: 'Attività', children: [const _Activities()]),
                   _Section(title: 'Pause', children: [_Breaks(s: s)]),
+                  _Section(
+                    title: 'Notifiche',
+                    children: [
+                      _Row(
+                        icon: Icons.notifications_active_rounded,
+                        title: 'Controlla le notifiche',
+                        subtitle: 'Permessi, batteria e una prova della pausa',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const NotificationCheckPage()),
+                        ),
+                      ),
+                    ],
+                  ),
                   _Section(title: 'Suono dei promemoria', children: [_Sounds(s: s)]),
                   _Section(title: 'Pomodoro', children: [_Pomodoro(s: s)]),
                   _Section(
@@ -83,12 +100,17 @@ class SettingsPage extends StatelessWidget {
                         title: 'Come funziona Taime',
                         onTap: () => showOnboarding(context),
                       ),
+                      _Row(
+                        icon: Icons.auto_awesome_rounded,
+                        title: 'Novità',
+                        onTap: () => showWhatsNew(context),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Center(
                     child: Text(
-                      'Taime 2.0 · i tuoi dati restano su questo telefono',
+                      'Taime $kAppVersion · i tuoi dati restano su questo telefono',
                       style: TextStyle(color: context.tc.muted, fontSize: 12.5),
                     ),
                   ),
@@ -294,7 +316,7 @@ class _AppearanceState extends State<_Appearance> {
                         controller: _coolors,
                         decoration: InputDecoration(
                           hintText: 'Incolla un link di coolors.co',
-                          suffixIcon: IconButton(
+                          suffixIcon: IconButton(tooltip: 'Usa questa palette', 
                             icon: const Icon(Icons.check_rounded),
                             onPressed: () {
                               final colors = pal.parsePalette(_coolors.text);
@@ -647,7 +669,11 @@ class _Backup extends StatelessWidget {
             if (!ok || !context.mounted) return;
             final messenger = ScaffoldMessenger.of(context);
             final msg = await importJson();
+            // Reminders and the home-screen list follow the new data.
             await tracker.sync();
+            await resyncTodoReminders();
+            await resyncNoteReminders();
+            await pushTodoWidget();
             messenger.showSnackBar(SnackBar(content: Text(msg)));
           },
         ),

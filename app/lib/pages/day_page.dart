@@ -24,8 +24,7 @@ String dayLabel(DateTime d) {
 
 /// Cats of each session in a list, flattened.
 List<PenCat> catsOf(List<SessionWork> sessions) => [
-  for (final s in sessions)
-    ...catsForSession(s.workSeconds ~/ 60, s.session.skinId ?? kSkins.first.id, s.session.id),
+  for (final s in sessions) ...catsForSession(s.workSeconds ~/ 60, s.session.skinId ?? kSkins.first.id, s.session.id),
 ];
 
 /// The day in detail: its own fenced tile and every session, all editable
@@ -66,6 +65,7 @@ class _DayPageState extends State<DayPage> {
                   Row(
                     children: [
                       IconButton(
+                        tooltip: 'Indietro',
                         onPressed: () => Navigator.pop(context),
                         icon: const Icon(Icons.arrow_back_rounded),
                       ),
@@ -77,10 +77,12 @@ class _DayPageState extends State<DayPage> {
                         ),
                       ),
                       IconButton(
+                        tooltip: 'Giorno prima',
                         onPressed: () => setState(() => _day = DateTime(_day.year, _day.month, _day.day - 1)),
                         icon: const Icon(Icons.chevron_left_rounded),
                       ),
                       IconButton(
+                        tooltip: 'Giorno dopo',
                         onPressed: () => setState(() => _day = next),
                         icon: const Icon(Icons.chevron_right_rounded),
                       ),
@@ -111,8 +113,10 @@ class _DayPageState extends State<DayPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(fmtHm(Duration(seconds: total)),
-                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                            Text(
+                              fmtHm(Duration(seconds: total)),
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                            ),
                             Text(
                               '  ·  ${cats.length} ${cats.length == 1 ? 'gattino' : 'gattini'}',
                               style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600),
@@ -149,21 +153,31 @@ class DaySessions extends StatelessWidget {
       );
     }
     final sorted = [...sessions]..sort((a, b) => a.session.startedAt.compareTo(b.session.startedAt));
-    return Column(
-      children: [
-        for (var i = 0; i < sorted.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: StaggeredIn(index: i, child: _SessionCard(session: sorted[i].session)),
-          ),
-      ],
+    return StreamBuilder<List<Activity>>(
+      stream: db.watchActivities(includeArchived: true),
+      builder: (context, aSnap) {
+        final acts = {for (final a in aSnap.data ?? const <Activity>[]) a.id: a};
+        return Column(
+          children: [
+            for (var i = 0; i < sorted.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: StaggeredIn(
+                  index: i,
+                  child: _SessionCard(session: sorted[i].session, activity: acts[sorted[i].session.activityId]),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
 
 class _SessionCard extends StatelessWidget {
-  const _SessionCard({required this.session});
+  const _SessionCard({required this.session, required this.activity});
   final Session session;
+  final Activity? activity;
 
   @override
   Widget build(BuildContext context) {
@@ -172,10 +186,9 @@ class _SessionCard extends StatelessWidget {
       stream: db.watchSegmentsOf(session.id),
       builder: (context, snap) {
         final segs = snap.data ?? const <Segment>[];
-        return FutureBuilder<Activity?>(
-          future: db.activityById(session.activityId),
-          builder: (context, aSnap) {
-            final act = aSnap.data;
+        final act = activity;
+        return Builder(
+          builder: (context) {
             final color = activityColor(act?.color ?? 0xFF93C4A0, dark: tc.dark);
             final work = Tracker.worked(segs);
             final pause = Tracker.paused(segs);
@@ -202,8 +215,10 @@ class _SessionCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(act?.name ?? 'Attività',
-                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5)),
+                            Text(
+                              act?.name ?? 'Attività',
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5),
+                            ),
                             Text(
                               '${DateFormat.Hm().format(session.startedAt)} – '
                               '${running ? 'in corso' : DateFormat.Hm().format(session.endedAt!)}'
@@ -304,8 +319,12 @@ class _EditSheet extends StatelessWidget {
                             showCheckmark: false,
                             shape: const StadiumBorder(),
                             selected: a.id == session.activityId,
-                            onSelected: (_) => (db.update(db.sessions)..where((s) => s.id.equals(sessionId)))
-                                .write(SessionsCompanion(activityId: Value(a.id))),
+                            onSelected: (_) async {
+                              await (db.update(db.sessions)..where((s) => s.id.equals(sessionId))).write(
+                                SessionsCompanion(activityId: Value(a.id)),
+                              );
+                              await tracker.sync();
+                            },
                           ),
                       ],
                     ),
@@ -358,14 +377,16 @@ class _EditSheet extends StatelessWidget {
 
   Future<void> _addSegment(Session session, List<Segment> segs) async {
     final start = segs.isEmpty ? session.startedAt : (segs.last.endedAt ?? DateTime.now());
-    await db.into(db.segments).insert(
-      SegmentsCompanion.insert(
-        sessionId: session.id,
-        isPause: false,
-        startedAt: start,
-        endedAt: Value(start.add(const Duration(minutes: 15))),
-      ),
-    );
+    await db
+        .into(db.segments)
+        .insert(
+          SegmentsCompanion.insert(
+            sessionId: session.id,
+            isPause: false,
+            startedAt: start,
+            endedAt: Value(start.add(const Duration(minutes: 15))),
+          ),
+        );
     await db.reshapeSession(session.id);
   }
 
@@ -411,23 +432,37 @@ class _SegmentRow extends StatelessWidget {
               size: 20,
               color: segment.isPause ? tc.pause : tc.accent,
             ),
-            onPressed: () => (db.update(db.segments)..where((s) => s.id.equals(segment.id)))
-                .write(SegmentsCompanion(isPause: Value(!segment.isPause))),
+            onPressed: () async {
+              await (db.update(
+                db.segments,
+              )..where((s) => s.id.equals(segment.id))).write(SegmentsCompanion(isPause: Value(!segment.isPause)));
+              await tracker.sync();
+            },
           ),
           _TimeButton(
             time: segment.startedAt,
+            label: 'Inizio del blocco',
             onChanged: (v) async {
-              await (db.update(db.segments)..where((s) => s.id.equals(segment.id)))
-                  .write(SegmentsCompanion(startedAt: Value(v)));
+              // A start after the end means the block began the day before.
+              final end = segment.endedAt;
+              final start = end != null && v.isAfter(end) ? v.subtract(const Duration(days: 1)) : v;
+              await (db.update(
+                db.segments,
+              )..where((s) => s.id.equals(segment.id))).write(SegmentsCompanion(startedAt: Value(start)));
               await db.reshapeSession(sessionId);
+              await tracker.sync();
             },
           ),
           Text('–', style: TextStyle(color: tc.muted)),
           _TimeButton(
             time: segment.endedAt,
+            label: 'Fine del blocco',
             onChanged: (v) async {
-              await (db.update(db.segments)..where((s) => s.id.equals(segment.id)))
-                  .write(SegmentsCompanion(endedAt: Value(v)));
+              // An end before the start means it crossed midnight.
+              final end = v.isBefore(segment.startedAt) ? v.add(const Duration(days: 1)) : v;
+              await (db.update(
+                db.segments,
+              )..where((s) => s.id.equals(segment.id))).write(SegmentsCompanion(endedAt: Value(end)));
               await db.reshapeSession(sessionId);
               await tracker.sync();
             },
@@ -449,22 +484,28 @@ class _SegmentRow extends StatelessWidget {
 }
 
 class _TimeButton extends StatelessWidget {
-  const _TimeButton({required this.time, required this.onChanged});
+  const _TimeButton({required this.time, required this.onChanged, required this.label});
   final DateTime? time;
   final ValueChanged<DateTime> onChanged;
 
+  /// For screen readers: which time this is.
+  final String label;
+
   @override
   Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: () async {
-        final base = time ?? DateTime.now();
-        final picked = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(base));
-        if (picked == null) return;
-        onChanged(DateTime(base.year, base.month, base.day, picked.hour, picked.minute));
-      },
-      child: Text(
-        time == null ? 'in corso' : DateFormat.Hm().format(time!),
-        style: TextStyle(color: context.tc.text, fontWeight: FontWeight.w700),
+    return Semantics(
+      label: label,
+      child: TextButton(
+        onPressed: () async {
+          final base = time ?? DateTime.now();
+          final picked = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(base));
+          if (picked == null) return;
+          onChanged(DateTime(base.year, base.month, base.day, picked.hour, picked.minute));
+        },
+        child: Text(
+          time == null ? 'in corso' : DateFormat.Hm().format(time!),
+          style: TextStyle(color: context.tc.text, fontWeight: FontWeight.w700),
+        ),
       ),
     );
   }
@@ -515,8 +556,10 @@ Future<void> addManualSession(BuildContext context, {DateTime? day}) async {
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.event_rounded),
                   title: const Text('Giorno'),
-                  trailing: Text(DateFormat('d MMM y', 'it').format(d),
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  trailing: Text(
+                    DateFormat('d MMM y', 'it').format(d),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   onTap: () async {
                     final p = await showDatePicker(
                       context: context,

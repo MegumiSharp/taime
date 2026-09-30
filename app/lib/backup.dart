@@ -13,8 +13,8 @@ import 'db.dart';
 import 'kitten/skins.dart';
 import 'palette.dart';
 
-/// JSON backup (re-importable, v1 to v3) and CSV export (for spreadsheets).
-const int kBackupVersion = 3;
+/// JSON backup (re-importable, v1 to v4) and CSV export (for spreadsheets).
+const int kBackupVersion = 4;
 
 String? _iso(DateTime? d) => d?.toIso8601String();
 DateTime? _parse(Object? v) => v == null ? null : DateTime.parse(v as String);
@@ -93,6 +93,7 @@ Future<Map<String, dynamic>> dumpAll(Db db) async {
           'date': _iso(n.date),
           'hasTime': n.hasTime,
           'remind': n.remind,
+          'pinned': n.pinned,
           'createdAt': _iso(n.createdAt),
           'updatedAt': _iso(n.updatedAt),
         },
@@ -105,7 +106,7 @@ Future<Map<String, dynamic>> dumpAll(Db db) async {
   };
 }
 
-/// Replaces everything in [db] with [data]. Accepts version 1 to 3 backups.
+/// Replaces everything in [db] with [data]. Accepts version 1 to 4 backups.
 Future<int> restoreAll(Db db, Map<String, dynamic> data) async {
   final version = (data['version'] as int?) ?? 1;
   final prefs = (data['prefs'] as Map?)?.cast<String, String>() ?? const {};
@@ -208,6 +209,7 @@ Future<int> restoreAll(Db db, Map<String, dynamic> data) async {
           date: Value(_parse(n['date'])),
           hasTime: Value(n['hasTime'] as bool? ?? false),
           remind: Value(n['remind'] as bool? ?? false),
+          pinned: Value(n['pinned'] as bool? ?? false),
           createdAt: _parse(n['createdAt']) ?? DateTime.now(),
           updatedAt: _parse(n['updatedAt']) ?? DateTime.now(),
         ),
@@ -280,7 +282,13 @@ Future<String> importJson() async {
     return 'File non valido';
   }
   if (data['app'] != 'taime') return 'Non è un backup di Taime';
-  final n = await restoreAll(db, data);
+  final int n;
+  try {
+    // One transaction: a broken file leaves the current data as it was.
+    n = await restoreAll(db, data);
+  } catch (_) {
+    return 'Il file è danneggiato: i dati attuali non sono stati toccati';
+  }
   return 'Importate $n sessioni';
 }
 

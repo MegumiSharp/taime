@@ -5,5 +5,6 @@
     <color name="taime_widget_text">#FFEDF2EE</color>
     <color name="taime_widget_muted">#FFAFBCB2</color>
     <color name="taime_widget_accent">#FF8FC09D</color>
+    <color name="taime_widget_late">#FFF0B27A</color>
     <color name="taime_widget_soft">#FF3A4740</color>
 </resources>

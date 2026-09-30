@@ -1,3 +1,5 @@
+<img src="icon.png" width="96" alt="Icona di Taime: un gattino bianco su verde salvia">
+
 # Taime
 
 App Android personale per concentrarsi e tenere traccia del tempo, nello spirito di Forest: mentre lavori un gattino cresce, i minuti diventano crocchette per adottare altri gattini e ogni giorno riempie un recinto.
@@ -7,10 +9,10 @@ Nessun account, nessun server, nessuna pubblicità: tutto resta sul telefono (SQ
 ## Cosa fa
 
 - **Focus**: scegli l'attività, premi Inizia e il gattino cresce fino a diventare adulto dopo un'ora. Hai pausa, Pomodoro con pausa lunga e pausa automatica che accende lo schermo come una sveglia. La scheda "Oggi" mostra le ore del giorno.
-- **To-do e note**: to-do divisi in Oggi / Questa settimana / Più avanti, con date scritte in italiano ("domani alle 15"), ripetizioni e promemoria. Le note hanno colori, date e notifiche.
+- **To-do e note**: to-do divisi in Oggi / Questa settimana / Più avanti, con date scritte in italiano ("domani alle 15"), ripetizioni, promemoria e ricerca. Le note hanno colori, caselle da spuntare, date, notifiche e si possono fissare in alto.
 - **Panoramica**: recinto isometrico (giorno, settimana, mese, anno), registro modificabile e statistiche.
 - **Negozio**: 69 gattini disegnati in codice in 4 rarità, più un album. Con "Crea il tuo gattino" ne componi fino a 5 con gli stili di quelli adottati.
-- **Notifica e widget**: la notifica del focus si aggiorna da sola ogni 30 s. Il widget Home ha Inizia / Pausa / Termina. Dopo un riavvio tornano entrambi.
+- **Notifica e widget**: la notifica del focus si aggiorna da sola ogni 30 s. Due widget Home: il timer (Inizia / Pausa / Termina) e i to-do di oggi. Dopo un riavvio tornano. In Impostazioni, "Controlla le notifiche" trova e sistema quello che le blocca.
 
 Le specifiche complete sono in [SPEC.md](SPEC.md).
 
@@ -42,6 +44,8 @@ dart run build_runner build --delete-conflicting-outputs
 
 Se cambi lo schema, alza `schemaVersion`, aggiungi la migrazione e un test in `test/migration_test.dart` (gli schemi delle versioni vecchie sono in `test/fixtures/`).
 
+L'icona si rigenera con `flutter test tool/make_icon_test.dart` (scrive tutte le misure in `android/`).
+
 Per vedere i gattini senza telefono:
 
 ```bash
@@ -58,12 +62,12 @@ app/
     db.dart              tabelle drift e query
     tracker.dart         timer fatto di timestamp (pausa, pomodoro, scadenze)
     kitten/              catalogo (skins.dart), disegno (painter.dart), animazioni (view.dart)
-    pages/               Focus, Panoramica, recinto, Negozio, Crea il tuo gattino, Impostazioni
+    pages/               Focus, Panoramica, recinto, Negozio, Crea il tuo gattino, Impostazioni, notifiche
     todo/                to-do, note, parser delle date in italiano
     backup.dart          backup JSON, CSV, backup automatico settimanale
   packages/taime_native/ plugin Kotlin: notifica del focus, widget, backup in Download
   test/                  test
-  tool/                  anteprima dei gattini, generatore dei suoni
+  tool/                  anteprima dei gattini, icona, generatore dei suoni
 ```
 
 ### Build di release

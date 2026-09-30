@@ -24,8 +24,11 @@ class Tracker {
 
   Future<Settings> _settings() async => Settings(await db.allPrefs());
 
-  Future<void> start(int activityId, {String note = '', String? skinId}) async {
+  /// [todoId]: the to-do this focus is for (Avvia focus), offered to tick off
+  /// at the end.
+  Future<void> start(int activityId, {String note = '', String? skinId, int? todoId}) async {
     await stop();
+    await db.setPref('focusTodo', todoId?.toString() ?? '');
     final now = DateTime.now();
     final skin = skinId ?? (await _settings()).activeSkin;
     final id = await db
@@ -240,8 +243,8 @@ class Tracker {
     final s = await _settings();
     if (seg == null || seg.isPause) await cancelAwayReminder();
     if (seg == null) {
-      await TaimeNative.liveStop();
       await cancelReminder();
+      await TaimeNative.liveStop().catchError((_) {});
       await _widgetIdle(s);
       return;
     }
@@ -253,10 +256,15 @@ class Tracker {
     final now = DateTime.now();
     final work = worked(segs, now: now);
     final skinId = session?.skinId ?? s.activeSkin;
-    final art = [for (var i = 0; i <= 4; i++) await kittenArtPath(skinId, i), await kittenArtPath(skinId, 0, sleeping: true)];
     final stage = stageOf((work.inSeconds / 60) % 60);
     final pauseMins = s.pomodoro ? pomoBreakMinutes(s, segs) : s.pauseReminderMin;
 
+    // The reminder matters most: schedule it before anything else can fail.
+    try {
+      await _scheduleFor(s, seg, segs, pauseMins);
+    } catch (_) {}
+
+    final art = [for (var i = 0; i <= 4; i++) await kittenArtPath(skinId, i), await kittenArtPath(skinId, 0, sleeping: true)];
     await TaimeNative.liveUpdate(
       title: name,
       paused: seg.isPause,
@@ -280,7 +288,9 @@ class Tracker {
       sinceMs: seg.isPause ? seg.startedAt.millisecondsSinceEpoch : now.subtract(work).millisecondsSinceEpoch,
       artPath: seg.isPause ? art.last : art[stage],
     ).catchError((_) {});
+  }
 
+  Future<void> _scheduleFor(Settings s, Segment seg, List<Segment> segs, int pauseMins) async {
     if (seg.isPause) {
       if (pauseMins > 0) {
         await scheduleReminder(

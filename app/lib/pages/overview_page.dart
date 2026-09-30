@@ -137,7 +137,7 @@ class _OverviewPageState extends State<OverviewPage> {
             const SizedBox(height: 8),
             Row(
               children: [
-                IconButton(
+                IconButton(tooltip: 'Periodo precedente', 
                   onPressed: () => setState(() => _anchor = _shifted(-1)),
                   icon: const Icon(Icons.chevron_left_rounded),
                 ),
@@ -152,7 +152,7 @@ class _OverviewPageState extends State<OverviewPage> {
                     ),
                   ),
                 ),
-                IconButton(
+                IconButton(tooltip: 'Periodo successivo', 
                   onPressed: () => setState(() => _anchor = _shifted(1)),
                   icon: const Icon(Icons.chevron_right_rounded),
                 ),
@@ -848,14 +848,15 @@ class _Habits extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
+              // No fixed height: the day letters grow with the text size.
               SizedBox(
-                height: 70,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     for (var i = 0; i < 7; i++)
                       Expanded(
                         child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             AnimatedContainer(
@@ -1040,7 +1041,7 @@ class _CalendarSheetState extends State<_CalendarSheet> {
           children: [
             Row(
               children: [
-                IconButton(
+                IconButton(tooltip: 'Mese precedente', 
                   onPressed: () => _pages.previousPage(duration: Motion.medium, curve: Motion.curve),
                   icon: const Icon(Icons.chevron_left_rounded),
                 ),
@@ -1051,7 +1052,7 @@ class _CalendarSheetState extends State<_CalendarSheet> {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
-                IconButton(
+                IconButton(tooltip: 'Mese successivo', 
                   onPressed: () => _pages.nextPage(duration: Motion.medium, curve: Motion.curve),
                   icon: const Icon(Icons.chevron_right_rounded),
                 ),

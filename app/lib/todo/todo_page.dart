@@ -36,24 +36,24 @@ Color priorityColor(BuildContext context, int p) {
   };
 }
 
-String dueLabel(DateTime due, bool hasTime) {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final d = DateTime(due.year, due.month, due.day);
-  final diff = (d.difference(today).inHours / 24).round();
-  final day = switch (diff) {
-    0 => 'Oggi',
-    1 => 'Domani',
-    -1 => 'Ieri',
-    _ when diff > 1 && diff < 7 => _cap(DateFormat('EEEE', 'it').format(d)),
-    _ => DateFormat('d MMM', 'it').format(d),
-  };
-  return hasTime ? '$day ${DateFormat.Hm().format(due)}' : day;
+/// What the search box holds; to-dos and notes both filter on it.
+final listsQuery = ValueNotifier<String>('');
+final _searchOpen = ValueNotifier<bool>(false);
+
+/// Case- and accent-insensitive "contains".
+bool matchesQuery(String text, String query) {
+  if (query.trim().isEmpty) return true;
+  String fold(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp('[àáâ]'), 'a')
+      .replaceAll(RegExp('[èéê]'), 'e')
+      .replaceAll(RegExp('[ìíî]'), 'i')
+      .replaceAll(RegExp('[òóô]'), 'o')
+      .replaceAll(RegExp('[ùúû]'), 'u');
+  return fold(text).contains(fold(query.trim()));
 }
 
-String _cap(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
-
-/// Title, the To-do | Note switch and a trailing control.
+/// Title, search, the To-do | Note switch and a trailing control.
 class ListsHeader extends StatelessWidget {
   const ListsHeader({super.key, required this.view, this.trailing});
   final ListsView view;
@@ -61,26 +61,56 @@ class ListsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(view == ListsView.todo ? 'To-do' : 'Note', style: Theme.of(context).textTheme.headlineMedium),
+    final tc = context.tc;
+    return ValueListenableBuilder<bool>(
+      valueListenable: _searchOpen,
+      builder: (context, open, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  view == ListsView.todo ? 'To-do' : 'Note',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+              ),
+              IconButton(
+                tooltip: open ? 'Chiudi la ricerca' : 'Cerca',
+                onPressed: () {
+                  _searchOpen.value = !open;
+                  if (open) listsQuery.value = '';
+                },
+                icon: Icon(open ? Icons.search_off_rounded : Icons.search_rounded, color: tc.text),
+              ),
+              ?trailing,
+            ],
+          ),
+          if (open)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: TextFormField(
+                initialValue: listsQuery.value,
+                autofocus: listsQuery.value.isEmpty,
+                textInputAction: TextInputAction.search,
+                onChanged: (v) => listsQuery.value = v,
+                decoration: InputDecoration(
+                  hintText: view == ListsView.todo ? 'Cerca nei to-do' : 'Cerca nelle note',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  isDense: true,
+                ),
+              ),
             ),
-            ?trailing,
-          ],
-        ),
-        const SizedBox(height: 14),
-        PillSelector<ListsView>(
-          values: ListsView.values,
-          labels: const ['To-do', 'Note'],
-          selected: view,
-          onChanged: (v) => listsView.value = v,
-        ),
-        const SizedBox(height: 8),
-      ],
+          const SizedBox(height: 14),
+          PillSelector<ListsView>(
+            values: ListsView.values,
+            labels: const ['To-do', 'Note'],
+            selected: view,
+            onChanged: (v) => listsView.value = v,
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 }
@@ -136,35 +166,40 @@ class _TodoPageState extends State<TodoPage> {
         final cats = cSnap.data ?? const <TodoCategory>[];
         return StreamBuilder<List<Todo>>(
           stream: db.watchTodos(),
-          builder: (context, snap) => _list(context, snap.data ?? const <Todo>[], cats),
+          builder: (context, snap) => ValueListenableBuilder<String>(
+            valueListenable: listsQuery,
+            builder: (context, query, _) => _list(context, snap.data ?? const <Todo>[], cats, query),
+          ),
         );
       },
     );
   }
 
-  Widget _list(BuildContext context, List<Todo> all, List<TodoCategory> cats) {
+  Widget _list(BuildContext context, List<Todo> all, List<TodoCategory> cats, String query) {
     final tc = context.tc;
     final byParent = <int, List<Todo>>{};
     for (final t in all) {
       if (t.parentId != null) byParent.putIfAbsent(t.parentId!, () => []).add(t);
     }
     final catById = {for (final c in cats) c.id: c};
-    final top = all.where((t) => t.parentId == null && (_category == null || t.categoryId == _category)).toList();
+    final searching = query.trim().isNotEmpty;
+    bool found(Todo t) =>
+        matchesQuery('${t.title}\n${t.notes}', query) ||
+        (byParent[t.id] ?? const <Todo>[]).any((s) => matchesQuery(s.title, query));
+    final top = all
+        .where((t) => t.parentId == null && (_category == null || t.categoryId == _category) && found(t))
+        .toList();
     final now = DateTime.now();
     final sections = [<Todo>[], <Todo>[], <Todo>[]];
     for (final t in top.where((t) => t.completedAt == null)) {
       sections[sectionOf(t, now)].add(t);
     }
-    int order(Todo a, Todo b) {
-      final c = (a.due ?? DateTime(9999)).compareTo(b.due ?? DateTime(9999));
-      if (c != 0) return c;
-      final p = a.priority.compareTo(b.priority);
-      return p != 0 ? p : a.id.compareTo(b.id);
-    }
-
     for (final s in sections) {
-      s.sort(order);
+      s.sort(compareTodos);
     }
+    // Oggi starts with what was left behind on earlier days.
+    final overdue = sections[0].where((t) => isOverdue(t, now)).toList();
+    final todayOnly = sections[0].where((t) => !isOverdue(t, now)).toList();
     final done = top.where((t) => t.completedAt != null).toList()
       ..sort((a, b) => b.completedAt!.compareTo(a.completedAt!));
 
@@ -208,11 +243,21 @@ class _TodoPageState extends State<TodoPage> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
                       child: Text(
-                        i == 0 ? 'Niente per oggi. Tocca + per aggiungere qualcosa.' : 'Niente qui.',
+                        searching
+                            ? 'Nessun risultato qui.'
+                            : i == 0
+                            ? 'Niente per oggi. Tocca + per aggiungere qualcosa.'
+                            : 'Niente qui.',
                         style: TextStyle(color: tc.muted, fontSize: 13),
                       ),
                     ),
-                  for (var k = 0; k < sections[i].length; k++) StaggeredIn(index: k, child: tile(sections[i][k])),
+                  if (i == 0 && overdue.isNotEmpty) ...[
+                    _OverdueHeader(count: overdue.length, onMoveAll: () => _moveAll(context, overdue)),
+                    for (var k = 0; k < overdue.length; k++) StaggeredIn(index: k, child: tile(overdue[k])),
+                    if (todayOnly.isNotEmpty) const SizedBox(height: 6),
+                  ],
+                  for (final (k, t) in (i == 0 ? todayOnly : sections[i]).indexed)
+                    StaggeredIn(index: k, child: tile(t)),
                 ],
               ],
             ),
@@ -260,13 +305,52 @@ class _TodoPageState extends State<TodoPage> {
               ),
             ),
           ),
-        if (_showDone)
+        if (_showDone || (searching && done.isNotEmpty))
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             sliver: SliverList.list(children: [for (final t in done.take(60)) tile(t)]),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 170)),
       ],
+    );
+  }
+
+  Future<void> _moveAll(BuildContext context, List<Todo> overdue) async {
+    final messenger = ScaffoldMessenger.of(context);
+    Haptic.medium();
+    final undo = await moveOverdueToToday(overdue);
+    showUndo(messenger, overdue.length == 1 ? 'Spostato a oggi' : 'Spostati ${overdue.length} a oggi', undo);
+  }
+}
+
+/// "Rimasti indietro": the overdue ones, with a button to bring them to today.
+class _OverdueHeader extends StatelessWidget {
+  const _OverdueHeader({required this.count, required this.onMoveAll});
+  final int count;
+  final VoidCallback onMoveAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final tc = context.tc;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 0, 4),
+      child: Row(
+        children: [
+          Icon(Icons.history_rounded, size: 16, color: tc.pause),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              count == 1 ? 'Rimasto indietro' : 'Rimasti indietro ($count)',
+              style: TextStyle(color: tc.pause, fontWeight: FontWeight.w800, fontSize: 13.5),
+            ),
+          ),
+          TextButton(
+            onPressed: onMoveAll,
+            style: TextButton.styleFrom(foregroundColor: tc.pause, visualDensity: VisualDensity.compact),
+            child: const Text('Tutti a oggi'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -551,6 +635,8 @@ class _TodoTileState extends State<_TodoTile> {
     final now = DateTime.now();
     final overdue = t.due != null && !completed && t.due!.isBefore(DateTime(now.year, now.month, now.day));
     final subsDone = widget.subtasks.where((s) => s.completedAt != null).length;
+    // An undated to-do sitting in Oggi for a while says since when.
+    final waiting = t.due == null && !completed && t.horizon == 0 ? daysBetween(t.createdAt, now) : 0;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -580,26 +666,31 @@ class _TodoTileState extends State<_TodoTile> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggle,
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: AnimatedContainer(
-                    duration: Motion.of(context, Motion.medium),
-                    curve: Motion.spring,
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: done ? pc : pc.withValues(alpha: 0.1),
-                      border: Border.all(color: pc, width: 2),
-                    ),
-                    child: AnimatedScale(
-                      scale: done ? 1 : 0,
+              Semantics(
+                button: true,
+                checked: done,
+                label: done ? 'Segna come da fare' : 'Segna come fatto',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _toggle,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: AnimatedContainer(
                       duration: Motion.of(context, Motion.medium),
                       curve: Motion.spring,
-                      child: Icon(Icons.check_rounded, size: 16, color: tc.surface),
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: done ? pc : pc.withValues(alpha: 0.1),
+                        border: Border.all(color: pc, width: 2),
+                      ),
+                      child: AnimatedScale(
+                        scale: done ? 1 : 0,
+                        duration: Motion.of(context, Motion.medium),
+                        curve: Motion.spring,
+                        child: Icon(Icons.check_rounded, size: 16, color: tc.surface),
+                      ),
                     ),
                   ),
                 ),
@@ -636,7 +727,8 @@ class _TodoTileState extends State<_TodoTile> {
                         if (t.due != null ||
                             widget.category != null ||
                             widget.subtasks.isNotEmpty ||
-                            t.recurrence != null)
+                            t.recurrence != null ||
+                            waiting > 0)
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Wrap(
@@ -649,6 +741,12 @@ class _TodoTileState extends State<_TodoTile> {
                                     icon: Icons.event_rounded,
                                     text: dueLabel(t.due!, t.hasTime),
                                     color: overdue ? tc.pause : tc.accent,
+                                  ),
+                                if (waiting > 0)
+                                  _Meta(
+                                    icon: Icons.history_rounded,
+                                    text: waiting == 1 ? 'da ieri' : 'da $waiting giorni',
+                                    color: waiting >= 3 ? tc.pause : tc.muted,
                                   ),
                                 if (t.recurrence != null)
                                   _Meta(
@@ -1023,26 +1121,31 @@ class _NewTodoState extends State<_NewTodo> {
                 Text('Priorità', style: label),
                 const SizedBox(width: 10),
                 for (var p = 1; p <= 4; p++)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      _forget(TokenKind.priority);
-                      setState(() => _priority = p);
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: AnimatedContainer(
-                        duration: Motion.of(context, Motion.fast),
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _prio == p
-                              ? priorityColor(context, p)
-                              : priorityColor(context, p).withValues(alpha: 0.15),
-                          border: Border.all(color: priorityColor(context, p), width: 2),
+                  Semantics(
+                    button: true,
+                    selected: _prio == p,
+                    label: p == 4 ? 'Nessuna priorità' : 'Priorità $p',
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        _forget(TokenKind.priority);
+                        setState(() => _priority = p);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: AnimatedContainer(
+                          duration: Motion.of(context, Motion.fast),
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _prio == p
+                                ? priorityColor(context, p)
+                                : priorityColor(context, p).withValues(alpha: 0.15),
+                            border: Border.all(color: priorityColor(context, p), width: 2),
+                          ),
+                          child: _prio == p ? Icon(Icons.check_rounded, size: 14, color: tc.surface) : null,
                         ),
-                        child: _prio == p ? Icon(Icons.check_rounded, size: 14, color: tc.surface) : null,
                       ),
                     ),
                   ),
@@ -1316,6 +1419,7 @@ class _TodoDetailState extends State<_TodoDetail> {
                       ),
                     ),
                     IconButton(
+                      tooltip: 'Elimina il sottotask',
                       icon: Icon(Icons.close_rounded, size: 18, color: tc.muted),
                       onPressed: () => (db.delete(db.todos)..where((x) => x.id.equals(s.id))).go(),
                     ),
@@ -1357,7 +1461,7 @@ class _TodoDetailState extends State<_TodoDetail> {
                         if (acts.isEmpty) return;
                         final last = int.tryParse(prefs['lastActivityId'] ?? '');
                         final act = acts.where((a) => a.id == last).firstOrNull ?? acts.first;
-                        await tracker.start(act.id, note: t.title);
+                        await tracker.start(act.id, note: t.title, todoId: t.id);
                         nav.pop();
                         shellTab.value = 0;
                       },
@@ -1471,10 +1575,12 @@ class _CategoryManager extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
+                          tooltip: 'Rinomina',
                           icon: const Icon(Icons.edit_rounded, size: 20),
                           onPressed: () => _rename(context, c),
                         ),
                         IconButton(
+                          tooltip: 'Elimina la categoria',
                           icon: Icon(Icons.delete_outline_rounded, size: 20, color: tc.danger),
                           onPressed: () async {
                             final ok = await confirm(

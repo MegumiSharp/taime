@@ -1,5 +1,3 @@
-import 'dart:ui' show lerpDouble;
-
 import 'package:flutter/material.dart';
 
 import 'palette.dart';
@@ -367,12 +365,6 @@ TextStyle timerStyle(BuildContext context, {double size = 68}) =>
       fontFeatures: const [FontFeature.tabularFigures()],
     );
 
-String fmtHms(Duration d) {
-  final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
-  return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:'
-      '${s.toString().padLeft(2, '0')}';
-}
-
 /// "12:34" under an hour, "1:02:03" after.
 String fmtClock(Duration d) {
   final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
@@ -385,7 +377,7 @@ String fmtClock(Duration d) {
 /// "2h 15m", "45m", "0m" — for totals.
 String fmtHm(Duration d) {
   final h = d.inHours, m = d.inMinutes % 60;
-  return h > 0 ? '${h}h ${m}m' : '${m}m';
+  if (h == 0) return '${m}m';
+  return m == 0 ? '${h}h' : '${h}h ${m}m';
 }
 
-double lerpD(double a, double b, double t) => lerpDouble(a, b, t)!;

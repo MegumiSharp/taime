@@ -46,12 +46,14 @@ class BalanceBuilder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<int>(
+    return Live<int>(
+      id: 'work',
       initialData: _work,
-      stream: db.watchClosedWorkSeconds(),
-      builder: (context, w) => StreamBuilder<int>(
+      stream: db.watchClosedWorkSeconds,
+      builder: (context, w) => Live<int>(
+        id: 'spent',
         initialData: _spent,
-        stream: db.watchSpent(),
+        stream: db.watchSpent,
         builder: (context, sp) {
           _work = w.data ?? _work;
           _spent = sp.data ?? _spent;

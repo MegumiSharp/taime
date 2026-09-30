@@ -10,13 +10,14 @@ class SoftCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(18),
     this.onTap,
+    this.onLongPress,
     this.color,
     this.radius = kRadius,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
-  final VoidCallback? onTap;
+  final VoidCallback? onTap, onLongPress;
   final Color? color;
   final double radius;
 
@@ -30,30 +31,19 @@ class SoftCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: color ?? tc.surface,
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: [
-          BoxShadow(
-            color: tc.shadow(),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: tc.shadow(), blurRadius: 16, offset: const Offset(0, 6))],
       ),
-      child: child,
+      // Ink (list rows, buttons) paints on this, above the card's colour.
+      child: Material(type: MaterialType.transparency, child: child),
     );
     if (onTap == null) return card;
-    return TapScale(onTap: onTap!, child: card);
+    return TapScale(onTap: onTap!, onLongPress: onLongPress, child: card);
   }
 }
 
 /// Shrinks a touch while pressed: the "soft button" feel everywhere.
 class TapScale extends StatefulWidget {
-  const TapScale({
-    super.key,
-    required this.child,
-    required this.onTap,
-    this.onLongPress,
-    this.scale = 0.96,
-  });
+  const TapScale({super.key, required this.child, required this.onTap, this.onLongPress, this.scale = 0.96});
 
   final Widget child;
   final VoidCallback onTap;
@@ -69,18 +59,21 @@ class _TapScaleState extends State<TapScale> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _down = true),
-      onTapUp: (_) => setState(() => _down = false),
-      onTapCancel: () => setState(() => _down = false),
-      onTap: widget.onTap,
-      onLongPress: widget.onLongPress,
-      child: AnimatedScale(
-        scale: _down ? widget.scale : 1,
-        duration: Motion.of(context, Motion.fast),
-        curve: Motion.curve,
-        child: widget.child,
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _down = true),
+        onTapUp: (_) => setState(() => _down = false),
+        onTapCancel: () => setState(() => _down = false),
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
+        child: AnimatedScale(
+          scale: _down ? widget.scale : 1,
+          duration: Motion.of(context, Motion.fast),
+          curve: Motion.curve,
+          child: widget.child,
+        ),
       ),
     );
   }
@@ -135,13 +128,7 @@ class PillButton extends StatelessWidget {
         color: disabled ? tc.raised : bg,
         borderRadius: BorderRadius.circular(40),
         boxShadow: kind == PillKind.surface || kind == PillKind.primary
-            ? [
-                BoxShadow(
-                  color: tc.shadow(1.2),
-                  blurRadius: 14,
-                  offset: const Offset(0, 5),
-                ),
-              ]
+            ? [BoxShadow(color: tc.shadow(1.2), blurRadius: 14, offset: const Offset(0, 5))]
             : null,
       ),
       child: Row(
@@ -177,8 +164,7 @@ class PillButton extends StatelessWidget {
     );
   }
 
-  static Color _onColor(Color bg) =>
-      bg.computeLuminance() > 0.45 ? const Color(0xFF26231F) : Colors.white;
+  static Color _onColor(Color bg) => bg.computeLuminance() > 0.45 ? const Color(0xFF26231F) : Colors.white;
 }
 
 /// Segmented pill control with a sliding thumb (Giorno / Settimana / ...).
@@ -225,13 +211,7 @@ class PillSelector<T> extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: tc.surface,
                     borderRadius: BorderRadius.circular(40),
-                    boxShadow: [
-                      BoxShadow(
-                        color: tc.shadow(1.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    boxShadow: [BoxShadow(color: tc.shadow(1.2), blurRadius: 8, offset: const Offset(0, 2))],
                   ),
                 ),
               ),
@@ -239,28 +219,28 @@ class PillSelector<T> extends StatelessWidget {
                 children: [
                   for (var i = 0; i < values.length; i++)
                     Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          if (i != index) Haptic.select();
-                          onChanged(values[i]);
-                        },
-                        child: Center(
-                          child: AnimatedDefaultTextStyle(
-                            duration: Motion.of(context, Motion.fast),
-                            style: TextStyle(
-                              fontFamily: 'Nunito',
-                              fontSize: 13.5,
-                              fontWeight: i == index
-                                  ? FontWeight.w800
-                                  : FontWeight.w600,
-                              color: i == index
-                                  ? (color ?? tc.text)
-                                  : tc.muted,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
-                              child: FittedBox(fit: BoxFit.scaleDown, child: Text(labels[i], maxLines: 1)),
+                      child: Semantics(
+                        button: true,
+                        selected: i == index,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            if (i != index) Haptic.select();
+                            onChanged(values[i]);
+                          },
+                          child: Center(
+                            child: AnimatedDefaultTextStyle(
+                              duration: Motion.of(context, Motion.fast),
+                              style: TextStyle(
+                                fontFamily: 'Nunito',
+                                fontSize: 13.5,
+                                fontWeight: i == index ? FontWeight.w800 : FontWeight.w600,
+                                color: i == index ? (color ?? tc.text) : tc.muted,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                child: FittedBox(fit: BoxFit.scaleDown, child: Text(labels[i], maxLines: 1)),
+                              ),
                             ),
                           ),
                         ),
@@ -342,11 +322,7 @@ class PastelBackground extends StatelessWidget {
         final bottom = Color.lerp(tc.bgBottom, tc.pauseBgBottom, t)!;
         return DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [top, bottom],
-            ),
+            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [top, bottom]),
           ),
           child: child,
         );
@@ -368,9 +344,7 @@ class SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(4, 8, 4, 12),
       child: Row(
         children: [
-          Expanded(
-            child: Text(text, style: Theme.of(context).textTheme.titleMedium),
-          ),
+          Expanded(child: Text(text, style: Theme.of(context).textTheme.titleMedium)),
           ?trailing,
         ],
       ),
@@ -379,11 +353,7 @@ class SectionTitle extends StatelessWidget {
 }
 
 /// Bottom sheet with the app's shape and safe insets.
-Future<T?> showSoftSheet<T>(
-  BuildContext context, {
-  required WidgetBuilder builder,
-  bool scrollControlled = true,
-}) {
+Future<T?> showSoftSheet<T>(BuildContext context, {required WidgetBuilder builder, bool scrollControlled = true}) {
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: scrollControlled,
@@ -417,9 +387,7 @@ Future<bool> confirm(
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, true),
-          style: danger
-              ? FilledButton.styleFrom(backgroundColor: tc.danger)
-              : null,
+          style: danger ? FilledButton.styleFrom(backgroundColor: tc.danger) : null,
           child: Text(action),
         ),
       ],
@@ -429,12 +397,7 @@ Future<bool> confirm(
 }
 
 class EmptyState extends StatelessWidget {
-  const EmptyState({
-    super.key,
-    required this.title,
-    this.subtitle,
-    this.art,
-  });
+  const EmptyState({super.key, required this.title, this.subtitle, this.art});
 
   final String title;
   final String? subtitle;
@@ -450,11 +413,7 @@ class EmptyState extends StatelessWidget {
         children: [
           ?art,
           if (art != null) const SizedBox(height: 12),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
           if (subtitle != null) ...[
             const SizedBox(height: 6),
             Text(
@@ -487,15 +446,7 @@ void showUndo(ScaffoldMessengerState messenger, String message, Future<void> Fun
 /// A small rounded choice: tinted when [selected]. Used for "Oggi / Settimana",
 /// date, repeat, reminder...
 class SoftChip extends StatelessWidget {
-  const SoftChip({
-    super.key,
-    required this.label,
-    this.icon,
-    this.selected = false,
-    this.onTap,
-    this.color,
-    this.dot,
-  });
+  const SoftChip({super.key, required this.label, this.icon, this.selected = false, this.onTap, this.color, this.dot});
 
   final String label;
   final IconData? icon;
@@ -524,7 +475,11 @@ class SoftChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (dot != null)
-            Container(width: 10, height: 10, decoration: BoxDecoration(color: dot, shape: BoxShape.circle))
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+            )
           else if (icon != null)
             Icon(icon, size: 16, color: selected ? accent : tc.muted),
           if (dot != null || icon != null) const SizedBox(width: 6),
@@ -539,6 +494,41 @@ class SoftChip extends StatelessWidget {
         ],
       ),
     );
-    return onTap == null ? chip : TapScale(onTap: onTap!, child: chip);
+    final body = onTap == null ? chip : TapScale(onTap: onTap!, child: chip);
+    return Semantics(selected: selected, child: body);
   }
+}
+
+/// A [StreamBuilder] that opens its stream once per [id] instead of on every
+/// rebuild: the Focus page ticks every second, and a new database query each
+/// second (and a new subscription) would be wasted work.
+class Live<T> extends StatefulWidget {
+  const Live({super.key, required this.id, required this.stream, required this.builder, this.initialData});
+
+  /// When it changes, the stream is opened again (e.g. a new day).
+  final Object? id;
+  final Stream<T> Function() stream;
+  final AsyncWidgetBuilder<T> builder;
+  final T? initialData;
+
+  @override
+  State<Live<T>> createState() => _LiveState<T>();
+}
+
+class _LiveState<T> extends State<Live<T>> {
+  late Stream<T> _stream = widget.stream();
+  late Object? _id = widget.id;
+
+  @override
+  void didUpdateWidget(Live<T> old) {
+    super.didUpdateWidget(old);
+    if (widget.id != _id) {
+      _id = widget.id;
+      _stream = widget.stream();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      StreamBuilder<T>(stream: _stream, initialData: widget.initialData, builder: widget.builder);
 }

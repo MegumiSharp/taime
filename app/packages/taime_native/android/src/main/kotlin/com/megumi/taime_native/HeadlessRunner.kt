@@ -8,7 +8,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
 
 /**
- * With no UI engine alive, a notification button boots a small engine that
+ * With no UI engine alive, a notification or widget button boots a small engine that
  * runs `liveActionMain(action)` from main.dart, which updates the database and
  * the notification, then calls `bg.done`.
  */
@@ -32,8 +32,10 @@ object HeadlessRunner {
         }
     }
 
+    /** One run finished: close the oldest engine (runs finish in order), not
+     *  every engine, so two quick taps do not cut each other short. */
     fun done() {
-        main.postDelayed({ engines.toList().forEach { destroy(it) } }, 500)
+        main.postDelayed({ engines.firstOrNull()?.let { destroy(it) } }, 500)
     }
 
     private fun destroy(engine: FlutterEngine) {

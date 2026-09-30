@@ -1,6 +1,18 @@
-# Taime — Specifiche 2.2
+# Taime — Specifiche 2.3
 
 App Android personale per concentrarsi e tracciare il tempo, nello spirito di Forest: mentre lavori un gattino cresce, il tempo diventa crocchette per comprare nuovi gattini, i giorni riempiono un recinto. Nessun account, nessun server: dati in SQLite sul telefono, con backup.
+
+## Novità 2.3
+- **Ore di oggi in grande** in cima al Focus quando il timer è fermo o in pausa (ore, barra per attività, obiettivo, giorni di fila); mentre lavori resta la scheda piccola in basso. Il contatore dei gatti della sessione è in alto accanto alle crocchette, fuori dal cerchio; il cuscino del gattino sta dentro la bolla.
+- **Controlla le notifiche** (Impostazioni): permessi, canali, sveglie precise, schermo che si accende, batteria, avvio automatico su Xiaomi; ogni problema con "Sistema"; prove: promemoria adesso, pausa tra 10 secondi a schermo spento, to-do. I promemoria vengono programmati prima di ogni altra cosa e, se il telefono rifiuta le sveglie precise, ripiegano su modalità meno precise invece di sparire.
+- **Widget dei to-do di oggi** (fino a 5, spunta dal widget, "+" per un nuovo to-do).
+- **To-do**: "Rimasti indietro" in cima a Oggi con "Tutti a oggi"; quelli senza data mostrano "da N giorni"; ricerca (senza badare ad accenti e maiuscole).
+- **Note**: caselle da spuntare (anche direttamente dalla scheda), fissate in alto (tieni premuto), ricerca.
+- **Focus da un to-do**: a fine sessione "Hai finito …?" lo spunta.
+- **Crea il tuo gattino**: colore degli accessori e fino a due effetti.
+- **Novità**: una finestra, una volta, dopo ogni aggiornamento (anche da Impostazioni → Aiuto).
+- **Icona** nuova: silhouette bianca del gattino con gli occhi vuoti su verde salvia; la stessa, piccola, nella barra di stato.
+- Revisione: codice morto rimosso, accessibilità (etichette e stati per i lettori di schermo, testo grande), query al database non più ripetute ogni secondo nel Focus, test delle schermate su telefono piccolo, chiaro/scuro e testo ingrandito.
 
 ## Novità 2.2
 - **Note** nella scheda To-do (interruttore To-do | Note): lista infinita, colori, filtro per colore, ordine per data, data e promemoria con notifica.
@@ -21,7 +33,7 @@ App Android personale per concentrarsi e tracciare il tempo, nello spirito di Fo
 - Obiettivo giornaliero con giorni di fila, Album dei gattini, widget Home, backup automatico settimanale in Download/Taime, pausa lunga del Pomodoro, spiegazione alla prima apertura.
 
 ## Stack
-- Flutter 3.47, Android. Database **drift** (schema v3, migrazioni dalla 1.0 e dalla 2.x testate).
+- Flutter 3.47, Android. Database **drift** (schema v4, migrazioni dalla 1.0, 2.0/2.1 e 2.2 testate).
 - Plugin locale `app/packages/taime_native` (Kotlin): notifica del focus con layout personalizzato in un foreground service (si aggiorna ogni 30 s), widget Home, ripristino dopo il riavvio, backup in Download, selettore dei suoni di sistema, anteprima audio sul canale sveglia.
 - `flutter_local_notifications` per i promemoria (canale "allarme", passano il Non disturbare) e per i to-do.
 - Icone Material "rounded", font Nunito incluso (200–800).
@@ -29,7 +41,7 @@ App Android personale per concentrarsi e tracciare il tempo, nello spirito di Fo
 ## Schermate
 - **Focus**: attività in alto (lista scorribile sfocata, editor con 28 colori + colore libero e 140+ icone cercabili), nota, gattino nella bolla, cronometro (conto alla rovescia solo in Pomodoro), "Annulla (10)" nei primi 10 s, Pausa/Termina, pausa arancione con caffè e gattino che dorme, grafico stile GitHub delle ultime 20 settimane, riepilogo a fine sessione.
 - **To-do**: Oggi (scaduti in cima) / Questa settimana / Più avanti, categorie a tendina, finestra "Nuovo to-do" con date in italiano evidenziate, ricorrenze, priorità, sottotask, promemoria, swipe, "Svuota" i completati, "Annulla", "Avvia focus".
-- **Note**: accanto ai to-do; colore, data, promemoria; la prima riga fa da titolo.
+- **Note**: accanto ai to-do; colore, data, promemoria, caselle da spuntare, fissate in alto, ricerca; la prima riga fa da titolo.
 - **Panoramica**: recinto isometrico (ogni tile un giorno, anno = 12 mesi), dettaglio giorno = registro modificabile, statistiche (distribuzione, attività, trend, abitudini, gattini preferiti, totale di sempre), calendario.
 - **Negozio**: In evidenza / Tutti / Album / Crea, anteprima con pose e crescita, acquisto, gattini creati da te.
 - **Impostazioni** (icona in alto a sinistra nel Focus): temi Salvia / Lavanda / Azzurro polvere / Personalizzato (Coolors), chiaro/scuro/sistema, attività, pause, suoni, Pomodoro, obiettivo, backup.
@@ -43,11 +55,12 @@ App Android personale per concentrarsi e tracciare il tempo, nello spirito di Fo
 - **Suoni**: 5 inclusi (generati da `tool/make_sounds.py`), suoni del telefono, file personale; flusso sveglia, una volta o finché non tocchi (max 1 min).
 
 ## Dati e backup
-- Backup JSON v3 (sessioni, attività, gattini acquistati e creati, to-do, note, impostazioni); l'import accetta anche i backup v1 e v2. Backup automatico settimanale in Download/Taime (tiene gli ultimi 4).
+- Backup JSON v4 (sessioni, attività, gattini acquistati e creati, to-do, note, impostazioni); l'import accetta anche i backup v1–v3 e, se il file è danneggiato, lascia i dati intatti. Backup automatico settimanale in Download/Taime (tiene gli ultimi 4).
 - CSV per fogli di calcolo.
 
 ## Sviluppo
-- Test: `flutter test` (migrazione, parser date, regola dei gatti, crocchette, contrasto temi, timer, palette).
+- Test: `flutter test` (migrazioni, parser date, regola dei gatti, crocchette, contrasto temi, timer, palette, to-do e note, e tutte le schermate su un telefono piccolo, chiaro/scuro, testo ingrandito).
+- Icona: `flutter test tool/make_icon_test.dart` rigenera tutte le misure.
 - Anteprima gattini: `flutter test tool/render_kittens_test.dart` → `build/kittens/*.png`.
 - Build: `flutter build apk --release --split-per-abi` da `app/`, sempre con la chiave `taime-release-key.jks` (non su GitHub: tienine una copia a parte).
 - Le build di debug si installano come "Taime dev", accanto all'app vera.

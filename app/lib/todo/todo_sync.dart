@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart';
 import 'package:intl/intl.dart';
 
+import 'package:taime_native/taime_native.dart';
+
 import '../app.dart';
 import '../db.dart';
 import '../notif.dart';
@@ -176,4 +178,89 @@ Future<int> categoryIdFor(String name) async {
       sort: Value(all.length),
     ),
   );
+}
+
+/// "Oggi", "Domani", "Lunedì", "12 ott", with the time when it has one.
+String dueLabel(DateTime due, bool hasTime, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
+  final d = DateTime(due.year, due.month, due.day);
+  final diff = (d.difference(today).inHours / 24).round();
+  final day = switch (diff) {
+    0 => 'Oggi',
+    1 => 'Domani',
+    -1 => 'Ieri',
+    _ when diff > 1 && diff < 7 => _cap(DateFormat('EEEE', 'it').format(d)),
+    _ => DateFormat('d MMM', 'it').format(d),
+  };
+  return hasTime ? '$day ${DateFormat.Hm().format(due)}' : day;
+}
+
+String _cap(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+/// Whole days between two moments' calendar dates (DST-proof).
+int daysBetween(DateTime from, DateTime to) =>
+    (DateTime(to.year, to.month, to.day).difference(DateTime(from.year, from.month, from.day)).inHours / 24).round();
+
+/// A to-do with a date before today.
+bool isOverdue(Todo t, DateTime now) => t.completedAt == null && t.due != null && daysBetween(now, t.due!) < 0;
+
+/// List order: soonest first, then priority, then oldest.
+int compareTodos(Todo a, Todo b) {
+  final c = (a.due ?? DateTime(9999)).compareTo(b.due ?? DateTime(9999));
+  if (c != 0) return c;
+  final p = a.priority.compareTo(b.priority);
+  return p != 0 ? p : a.id.compareTo(b.id);
+}
+
+/// Moves every overdue to-do to today, keeping its time. Returns an undo.
+Future<Future<void> Function()> moveOverdueToToday(List<Todo> overdue) async {
+  final now = DateTime.now();
+  final undos = [for (final t in overdue) await postponeTodo(t, now)];
+  return () async {
+    for (final u in undos) {
+      await u();
+    }
+  };
+}
+
+// --- Home-screen widget -------------------------------------------------------
+
+/// Sends today's open to-dos to the home-screen widget.
+Future<void> pushTodoWidget([List<Todo>? all]) async {
+  try {
+    final todos = all ?? await db.allTodos();
+    final now = DateTime.now();
+    final today = [
+      for (final t in todos)
+        if (t.parentId == null && t.completedAt == null && sectionOf(t, now) == 0) t,
+    ]..sort(compareTodos);
+    await TaimeSystem.todoWidgetUpdate([
+      for (final t in today.take(5))
+        (
+          id: t.id,
+          title: t.title,
+          meta: t.due == null ? '' : dueLabel(t.due!, t.hasTime, now: now),
+          late: isOverdue(t, now),
+        ),
+    ], today.length);
+  } catch (_) {
+    // No widget support (tests, old phones): nothing to do.
+  }
+}
+
+/// Keeps the widget in step with every change to the list.
+void watchTodoWidget() => db.watchTodos().listen(pushTodoWidget);
+
+// --- Focus started from a to-do -------------------------------------------------
+
+/// Remembers which to-do a focus session is for, to offer ticking it off at
+/// the end. Any other start clears it.
+Future<void> setFocusTodo(int? id) => db.setPref('focusTodo', id?.toString() ?? '');
+
+Future<Todo?> focusTodo() async {
+  final id = int.tryParse(await db.pref('focusTodo') ?? '');
+  if (id == null) return null;
+  final t = await todoById(id);
+  return t == null || t.completedAt != null ? null : t;
 }

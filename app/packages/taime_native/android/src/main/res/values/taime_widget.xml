@@ -5,6 +5,7 @@
     <color name="taime_widget_text">#FF2F3A31</color>
     <color name="taime_widget_muted">#FF6B7A6E</color>
     <color name="taime_widget_accent">#FF5E8F6C</color>
+    <color name="taime_widget_late">#FFC9793A</color>
     <color name="taime_widget_soft">#FFD5E6D7</color>
 
     <style name="TaimeWidgetButton">
@@ -20,4 +21,5 @@
     </style>
 
     <string name="taime_widget_description">Il tuo gattino e il timer di focus</string>
+    <string name="taime_todo_widget_description">I to-do di oggi, da spuntare al volo</string>
 </resources>

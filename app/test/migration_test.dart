@@ -39,7 +39,35 @@ Db openV2(List<String> inserts) {
   );
 }
 
+/// A database as Taime 2.2 left it (test/fixtures/schema_v3.sql).
+Db openV3(List<String> inserts) {
+  final schema = File('test/fixtures/schema_v3.sql').readAsStringSync();
+  return Db.forTesting(
+    NativeDatabase.memory(
+      setup: (raw) {
+        raw.execute(schema);
+        for (final s in inserts) {
+          raw.execute(s);
+        }
+        raw.execute('PRAGMA user_version = 3');
+      },
+    ),
+  );
+}
+
 void main() {
+  test('a 2.2 database gains pinned notes', () async {
+    final db = openV3([
+      "INSERT INTO notes (id, body, created_at, updated_at) VALUES (1, 'idea', 1758000000, 1758000000)",
+      "INSERT INTO custom_skins (id, name, spec, created_at) VALUES (1, 'Mia', '{}', 1758000000)",
+    ]);
+    final n = (await db.select(db.notes).get()).single;
+    expect(n.body, 'idea');
+    expect(n.pinned, isFalse);
+    expect((await db.select(db.customSkins).get()).single.name, 'Mia');
+    await db.close();
+  });
+
   test('a 2.x database upgrades to notes and custom kittens', () async {
     final db = openV2([
       "INSERT INTO todos (id, title, created_at) VALUES (1, 'latte', 1758000000)",
@@ -137,7 +165,7 @@ void main() {
     await a.into(a.purchases).insert(PurchasesCompanion.insert(skinId: 'ombra', price: 600, purchasedAt: DateTime(2026, 9, 1)));
     await a.into(a.todos).insert(TodosCompanion.insert(title: 'comprare latte', createdAt: DateTime(2026, 9, 1), due: Value(DateTime(2026, 9, 2, 18)), hasTime: const Value(true)));
     await a.into(a.todos).insert(TodosCompanion.insert(title: 'dopo', createdAt: DateTime(2026, 9, 1), horizon: const Value(2)));
-    await a.into(a.notes).insert(NotesCompanion.insert(body: 'idea', color: const Value(0xFFF2A7C3), date: Value(DateTime(2026, 9, 3, 9)), hasTime: const Value(true), remind: const Value(true), createdAt: DateTime(2026, 9, 1), updatedAt: DateTime(2026, 9, 1)));
+    await a.into(a.notes).insert(NotesCompanion.insert(body: 'idea', color: const Value(0xFFF2A7C3), date: Value(DateTime(2026, 9, 3, 9)), hasTime: const Value(true), remind: const Value(true), pinned: const Value(true), createdAt: DateTime(2026, 9, 1), updatedAt: DateTime(2026, 9, 1)));
     await a.into(a.customSkins).insert(CustomSkinsCompanion.insert(name: 'Mia', spec: '{"base":1}', createdAt: DateTime(2026, 9, 1)));
     final dump = await dumpAll(a);
 
@@ -152,6 +180,7 @@ void main() {
     expect(n.color, 0xFFF2A7C3);
     expect(n.date, DateTime(2026, 9, 3, 9));
     expect(n.remind, isTrue);
+    expect(n.pinned, isTrue);
     expect((await b.select(b.customSkins).get()).single.spec, '{"base":1}');
     expect(t.due, DateTime(2026, 9, 2, 18));
     expect(t.hasTime, isTrue);

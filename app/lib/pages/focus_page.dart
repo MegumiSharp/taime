@@ -12,6 +12,7 @@ import '../kitten/view.dart';
 import '../main.dart' show shellTab;
 import '../settings.dart';
 import '../theme.dart';
+import '../todo/todo_sync.dart';
 import '../tracker.dart';
 import '../ui/motion.dart';
 import '../ui/widgets.dart';
@@ -57,34 +58,25 @@ class _FocusPageState extends State<FocusPage> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<Session?>(
-      stream: db.watchOpenSession(),
+    return Live<Session?>(
+      id: 'open',
+      stream: db.watchOpenSession,
       builder: (context, sSnap) {
         final session = sSnap.data;
-        return StreamBuilder<List<Segment>>(
-          stream: session == null
-              ? Stream.value(const <Segment>[])
-              : db.watchSegmentsOf(session.id),
-          builder: (context, segSnap) => StreamBuilder<List<Activity>>(
-            stream: db.watchActivities(),
-            builder: (context, aSnap) => _body(
-              context,
-              session,
-              segSnap.data ?? const [],
-              aSnap.data ?? const [],
-            ),
+        return Live<List<Segment>>(
+          id: session?.id,
+          stream: () => session == null ? Stream.value(const <Segment>[]) : db.watchSegmentsOf(session.id),
+          builder: (context, segSnap) => Live<List<Activity>>(
+            id: 'activities',
+            stream: db.watchActivities,
+            builder: (context, aSnap) => _body(context, session, segSnap.data ?? const [], aSnap.data ?? const []),
           ),
         );
       },
     );
   }
 
-  Widget _body(
-    BuildContext context,
-    Session? session,
-    List<Segment> segs,
-    List<Activity> acts,
-  ) {
+  Widget _body(BuildContext context, Session? session, List<Segment> segs, List<Activity> acts) {
     final tc = context.tc;
     final s = widget.settings;
     final open = segs.where((x) => x.endedAt == null).firstOrNull;
@@ -120,9 +112,7 @@ class _FocusPageState extends State<FocusPage> {
     String caption;
     if (!running) {
       shown = Duration.zero;
-      caption = s.pomodoro
-          ? 'Pomodoro da ${s.pomoWorkMin} minuti'
-          : 'Il gattino cresce mentre ti concentri';
+      caption = s.pomodoro ? 'Pomodoro da ${s.pomoWorkMin} minuti' : 'Il gattino cresce mentre ti concentri';
     } else if (s.pomodoro) {
       final mins = paused ? Tracker.pomoBreakMinutes(s, segs) : s.pomoWorkMin;
       final left = open.startedAt.add(Duration(minutes: mins)).difference(_now);
@@ -152,10 +142,10 @@ class _FocusPageState extends State<FocusPage> {
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
           children: [
             _TopBar(
+              cats: running ? adults : 0,
+              skin: skin,
               extraSeconds: running && !paused ? _now.difference(open.startedAt).inSeconds : 0,
-              onSettings: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsPage()),
-              ),
+              onSettings: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsPage())),
             ),
             const SizedBox(height: 6),
             _ActivityHeader(
@@ -164,6 +154,16 @@ class _FocusPageState extends State<FocusPage> {
               note: focusNote,
               onTap: () => _pickActivity(context, session, acts),
             ),
+            AnimatedSize(
+              duration: Motion.of(context, Motion.slow),
+              curve: Motion.curve,
+              child: !running || paused
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: TodayCard(goalMinutes: s.dailyGoalMin, now: _now, hero: true),
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
             const SizedBox(height: 14),
             _Scene(
               skin: skin,
@@ -171,18 +171,30 @@ class _FocusPageState extends State<FocusPage> {
               paused: paused,
               growth: growth,
               progress: progress,
-              adults: running ? adults : 0,
               celebrate: _celebrate,
               onTapKitten: running ? null : () => _pickSkin(context),
+            ),
+            AnimatedSize(
+              duration: Motion.of(context, Motion.medium),
+              child: running
+                  ? const SizedBox(width: double.infinity)
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 4, bottom: 6),
+                      child: Text(
+                        'Tocca il gattino per cambiarlo',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: tc.muted, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
             ),
             const SizedBox(height: 10),
             Center(
               child: AnimatedDefaultTextStyle(
                 duration: Motion.of(context, Motion.slow),
-                style: timerStyle(context).copyWith(
-                  color: paused ? Color.lerp(tc.pause, tc.text, 0.25) : tc.text,
+                style: timerStyle(context).copyWith(color: paused ? Color.lerp(tc.pause, tc.text, 0.25) : tc.text),
+                child: Text(
+                  running ? fmtClock(shown) : (s.pomodoro ? fmtClock(Duration(minutes: s.pomoWorkMin)) : '00:00'),
                 ),
-                child: Text(running ? fmtClock(shown) : (s.pomodoro ? fmtClock(Duration(minutes: s.pomoWorkMin)) : '00:00')),
               ),
             ),
             Center(
@@ -220,14 +232,13 @@ class _FocusPageState extends State<FocusPage> {
               onResume: () => tracker.resume(),
               onStop: () => _stop(context, session!, segs),
             ),
-            const SizedBox(height: 24),
-            TodayCard(goalMinutes: s.dailyGoalMin, now: _now),
+            if (running && !paused) ...[const SizedBox(height: 24), TodayCard(goalMinutes: s.dailyGoalMin, now: _now)],
             AnimatedSwitcher(
               duration: Motion.of(context, Motion.slow),
               child: running
                   ? const SizedBox(height: 12)
                   : Padding(
-                      padding: const EdgeInsets.only(top: 12),
+                      padding: const EdgeInsets.only(top: 24),
                       child: Column(
                         children: [
                           GestureDetector(
@@ -265,23 +276,19 @@ class _FocusPageState extends State<FocusPage> {
     Haptic.medium();
     final work = Tracker.worked(segs);
     final skinId = session.skinId ?? widget.settings.activeSkin;
+    final todo = await focusTodo();
     await tracker.stop();
+    await setFocusTodo(null);
     focusNote.clear();
     if (!context.mounted) return;
     await showSoftSheet<void>(
       context,
-      builder: (_) => SessionSummary(
-        work: work,
-        cats: catsForSession(work.inMinutes, skinId, session.id),
-      ),
+      builder: (_) => SessionSummary(work: work, cats: catsForSession(work.inMinutes, skinId, session.id), todo: todo),
     );
   }
 
   Future<void> _pickActivity(BuildContext context, Session? session, List<Activity> acts) async {
-    final picked = await showActivityPicker(
-      context,
-      currentId: _currentActivity(session, acts)?.id,
-    );
+    final picked = await showActivityPicker(context, currentId: _currentActivity(session, acts)?.id);
     if (picked == null || !context.mounted) return;
     if (session == null) {
       setState(() => _pendingActivityId = picked.id);
@@ -324,10 +331,7 @@ class _FocusPageState extends State<FocusPage> {
     if (!context.mounted) return;
     final picked = await showSoftSheet<String>(
       context,
-      builder: (context) => _SkinPicker(
-        owned: owned,
-        active: widget.settings.activeSkin,
-      ),
+      builder: (context) => _SkinPicker(owned: owned, active: widget.settings.activeSkin),
     );
     if (picked == null) return;
     await db.setPref('activeSkin', picked);
@@ -336,9 +340,13 @@ class _FocusPageState extends State<FocusPage> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onSettings, required this.extraSeconds});
+  const _TopBar({required this.onSettings, required this.extraSeconds, required this.cats, required this.skin});
   final VoidCallback onSettings;
   final int extraSeconds;
+
+  /// Adult cats earned in this session so far.
+  final int cats;
+  final Skin skin;
 
   @override
   Widget build(BuildContext context) {
@@ -355,6 +363,16 @@ class _TopBar extends StatelessWidget {
           ),
         ),
         const Spacer(),
+        AnimatedSwitcher(
+          duration: Motion.of(context, Motion.medium),
+          child: cats > 0
+              ? Padding(
+                  key: const ValueKey('cats'),
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _CatsChip(count: cats, skin: skin),
+                )
+              : const SizedBox.shrink(),
+        ),
         GestureDetector(
           onTap: () => shellTab.value = 3,
           child: BalanceChip(extraSeconds: extraSeconds),
@@ -365,12 +383,7 @@ class _TopBar extends StatelessWidget {
 }
 
 class _ActivityHeader extends StatelessWidget {
-  const _ActivityHeader({
-    required this.activity,
-    required this.session,
-    required this.note,
-    required this.onTap,
-  });
+  const _ActivityHeader({required this.activity, required this.session, required this.note, required this.onTap});
 
   final Activity? activity;
   final Session? session;
@@ -380,9 +393,7 @@ class _ActivityHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tc = context.tc;
-    final color = activity == null
-        ? tc.accent
-        : activityColor(activity!.color, dark: tc.dark);
+    final color = activity == null ? tc.accent : activityColor(activity!.color, dark: tc.dark);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -477,7 +488,6 @@ class _Scene extends StatelessWidget {
     required this.paused,
     required this.growth,
     required this.progress,
-    required this.adults,
     required this.celebrate,
     required this.onTapKitten,
   });
@@ -485,7 +495,6 @@ class _Scene extends StatelessWidget {
   final Skin skin;
   final bool running, paused;
   final double growth, progress;
-  final int adults;
   final int celebrate;
   final VoidCallback? onTapKitten;
 
@@ -541,13 +550,13 @@ class _Scene extends StatelessWidget {
               ),
               // Cushion.
               Positioned(
-                bottom: size * 0.17,
+                bottom: size * 0.18,
                 child: Container(
-                  width: size * 0.56,
-                  height: size * 0.12,
+                  width: size * 0.52,
+                  height: size * 0.10,
                   decoration: BoxDecoration(
-                    color: Color.lerp(tc.accentSoft, paused ? tc.pauseSoft : tc.accentSoft, 1),
-                    borderRadius: BorderRadius.all(Radius.elliptical(size * 0.28, size * 0.06)),
+                    color: paused ? tc.pauseSoft : tc.accentSoft,
+                    borderRadius: BorderRadius.all(Radius.elliptical(size * 0.26, size * 0.05)),
                   ),
                 ),
               ),
@@ -558,8 +567,8 @@ class _Scene extends StatelessWidget {
                   child: Transform.scale(
                     scale: 1 + t * 1.2,
                     child: Container(
-                      width: size * 0.76,
-                      height: size * 0.76,
+                      width: size * 0.8,
+                      height: size * 0.8,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
@@ -569,10 +578,7 @@ class _Scene extends StatelessWidget {
                             Colors.white.withValues(alpha: tc.dark ? 0.04 : 0.14),
                           ],
                         ),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: tc.dark ? 0.18 : 0.8),
-                          width: 2,
-                        ),
+                        border: Border.all(color: Colors.white.withValues(alpha: tc.dark ? 0.18 : 0.8), width: 2),
                       ),
                     ),
                   ),
@@ -581,40 +587,27 @@ class _Scene extends StatelessWidget {
               // Kitten.
               Positioned(
                 bottom: size * 0.19,
-                child: GestureDetector(
-                  onTap: onTapKitten,
-                  child: _Hop(
-                    trigger: celebrate,
-                    child: AnimatedSwitcher(
-                      duration: Motion.of(context, Motion.slow),
-                      child: KittenView(
-                        key: ValueKey('${skin.id}-$paused'),
-                        skin: skin,
-                        pose: paused ? Pose.dorme : skin.pose,
-                        growth: growth,
-                        size: size * 0.58,
+                child: Semantics(
+                  button: onTapKitten != null,
+                  label: '${skin.name}${onTapKitten != null ? ', tocca per cambiare gattino' : ''}',
+                  child: GestureDetector(
+                    onTap: onTapKitten,
+                    child: _Hop(
+                      trigger: celebrate,
+                      child: AnimatedSwitcher(
+                        duration: Motion.of(context, Motion.slow),
+                        child: KittenView(
+                          key: ValueKey('${skin.id}-$paused'),
+                          skin: skin,
+                          pose: paused ? Pose.dorme : skin.pose,
+                          growth: growth,
+                          size: size * 0.58,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-              if (onTapKitten != null)
-                Positioned(
-                  bottom: 0,
-                  child: Opacity(
-                    opacity: 1 - t,
-                    child: Text(
-                      'Tocca per cambiare gattino',
-                      style: TextStyle(color: tc.muted, fontSize: 12, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-              if (adults > 0)
-                Positioned(
-                  top: size * 0.08,
-                  right: size * 0.06,
-                  child: _CatsChip(count: adults, skin: skin),
-                ),
             ],
           ),
         ),
@@ -650,8 +643,7 @@ class _RingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RingPainter old) =>
-      old.progress != progress || old.color != color || old.track != track;
+  bool shouldRepaint(_RingPainter old) => old.progress != progress || old.color != color || old.track != track;
 }
 
 /// A little hop and a floating heart each time [trigger] changes.
@@ -700,10 +692,7 @@ class _CatsChip extends StatelessWidget {
     final tc = context.tc;
     return Container(
       padding: const EdgeInsets.fromLTRB(4, 2, 12, 2),
-      decoration: BoxDecoration(
-        color: tc.surface.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(20),
-      ),
+      decoration: BoxDecoration(color: tc.surface.withValues(alpha: 0.9), borderRadius: BorderRadius.circular(20)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -754,11 +743,7 @@ class _Buttons extends StatelessWidget {
     } else if (canCancel) {
       child = Center(
         key: const ValueKey('cancel'),
-        child: PillButton(
-          label: 'Annulla ($cancelLeft)',
-          kind: PillKind.ghost,
-          onTap: onCancel,
-        ),
+        child: PillButton(label: 'Annulla ($cancelLeft)', kind: PillKind.ghost, onTap: onCancel),
       );
     } else {
       child = Row(
@@ -818,10 +803,8 @@ class CoffeeCup extends StatefulWidget {
 }
 
 class _CoffeeCupState extends State<CoffeeCup> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2400),
-  )..repeat();
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))
+    ..repeat();
 
   @override
   void dispose() {
@@ -848,8 +831,7 @@ class _CoffeeCupState extends State<CoffeeCup> with SingleTickerProviderStateMix
 }
 
 class _CupPainter extends CustomPainter {
-  _CupPainter({required this.anim, required this.cup, required this.line, required this.steam})
-    : super(repaint: anim);
+  _CupPainter({required this.anim, required this.cup, required this.line, required this.steam}) : super(repaint: anim);
   final Animation<double> anim;
   final Color cup, line, steam;
 
@@ -909,9 +891,12 @@ class _CupPainter extends CustomPainter {
 
 /// Shown after "Termina": what the session earned.
 class SessionSummary extends StatelessWidget {
-  const SessionSummary({super.key, required this.work, required this.cats});
+  const SessionSummary({super.key, required this.work, required this.cats, this.todo});
   final Duration work;
   final List<PenCat> cats;
+
+  /// The to-do this focus was started from, if any: "L'hai finito?".
+  final Todo? todo;
 
   @override
   Widget build(BuildContext context) {
@@ -941,17 +926,15 @@ class SessionSummary extends StatelessWidget {
                   for (var i = 0; i < shownCats.length; i++)
                     StaggeredIn(
                       index: i,
-                      child: KittenView(
-                        skin: skinById(shownCats[i].skinId),
-                        growth: shownCats[i].growth,
-                        size: 78,
-                      ),
+                      child: KittenView(skin: skinById(shownCats[i].skinId), growth: shownCats[i].growth, size: 78),
                     ),
                   if (cats.length > shownCats.length)
                     Padding(
                       padding: const EdgeInsets.only(top: 30),
-                      child: Text('+${cats.length - shownCats.length}',
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                      child: Text(
+                        '+${cats.length - shownCats.length}',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                      ),
                     ),
                 ],
               ),
@@ -965,13 +948,10 @@ class SessionSummary extends StatelessWidget {
                   label: cats.length == 1 ? 'gattino nel recinto' : 'gattini nel recinto',
                 ),
                 const SizedBox(width: 24),
-                _Earned(
-                  icon: Icons.cookie_rounded,
-                  value: '+${work.inMinutes}',
-                  label: 'crocchette',
-                ),
+                _Earned(icon: Icons.cookie_rounded, value: '+${work.inMinutes}', label: 'crocchette'),
               ],
             ),
+            if (todo != null) ...[const SizedBox(height: 16), _TodoDone(todo: todo!)],
             const SizedBox(height: 20),
             Row(
               children: [
@@ -999,6 +979,53 @@ class SessionSummary extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "Hai finito …?" with one tap to tick the to-do off.
+class _TodoDone extends StatefulWidget {
+  const _TodoDone({required this.todo});
+  final Todo todo;
+
+  @override
+  State<_TodoDone> createState() => _TodoDoneState();
+}
+
+class _TodoDoneState extends State<_TodoDone> {
+  bool _done = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tc = context.tc;
+    return AnimatedContainer(
+      duration: Motion.of(context, Motion.medium),
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: _done ? tc.accentSoft : tc.raised,
+        borderRadius: BorderRadius.circular(kRadiusSmall),
+      ),
+      child: Row(
+        children: [
+          Icon(_done ? Icons.task_alt_rounded : Icons.help_outline_rounded, color: tc.accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _done ? '"${widget.todo.title}" è fatto' : 'Hai finito "${widget.todo.title}"?',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          if (!_done)
+            TextButton(
+              onPressed: () async {
+                Haptic.medium();
+                await completeTodo(widget.todo);
+                if (mounted) setState(() => _done = true);
+              },
+              child: const Text('Sì, spunta'),
+            ),
+        ],
       ),
     );
   }
@@ -1046,10 +1073,7 @@ class _SkinPicker extends StatelessWidget {
           children: [
             Text('I tuoi gattini', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
-            Text(
-              'Scegli chi ti fa compagnia. Altri nel Negozio.',
-              style: TextStyle(color: tc.muted),
-            ),
+            Text('Scegli chi ti fa compagnia. Altri nel Negozio.', style: TextStyle(color: tc.muted)),
             const SizedBox(height: 14),
             Flexible(
               child: GridView.count(
@@ -1066,7 +1090,9 @@ class _SkinPicker extends StatelessWidget {
                       onTap: () => Navigator.pop(context, s.id),
                       child: Column(
                         children: [
-                          Expanded(child: KittenView(skin: s, size: 100, animate: s.id == active)),
+                          Expanded(
+                            child: KittenView(skin: s, size: 100, animate: s.id == active),
+                          ),
                           Text(
                             s.name,
                             maxLines: 1,

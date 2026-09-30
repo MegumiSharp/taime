@@ -4,15 +4,11 @@ import '../app.dart';
 import '../db.dart';
 import '../theme.dart';
 import '../ui/motion.dart';
+import '../ui/widgets.dart';
 
 /// Minutes of work per calendar day in [from, to), splitting segments that
 /// cross midnight.
-Map<DateTime, double> minutesPerDay(
-  Iterable<Segment> segs,
-  DateTime from,
-  DateTime to, {
-  DateTime? now,
-}) {
+Map<DateTime, double> minutesPerDay(Iterable<Segment> segs, DateTime from, DateTime to, {DateTime? now}) {
   final n = now ?? DateTime.now();
   final out = <DateTime, double>{};
   for (final s in segs) {
@@ -45,10 +41,14 @@ int goalStreak(Map<DateTime, double> perDay, double goalMinutes, DateTime now) {
 }
 
 /// Today at a glance: hours per activity, the daily goal and the streak.
+///
+/// [hero] is the big version shown on top of the Focus page while the timer
+/// is stopped or paused: the hours of the day come first.
 class TodayCard extends StatelessWidget {
-  const TodayCard({super.key, required this.goalMinutes, this.now});
+  const TodayCard({super.key, required this.goalMinutes, this.now, this.hero = false});
   final int goalMinutes;
   final DateTime? now;
+  final bool hero;
 
   @override
   Widget build(BuildContext context) {
@@ -57,15 +57,18 @@ class TodayCard extends StatelessWidget {
     final today = DateTime(n.year, n.month, n.day);
     final tomorrow = DateTime(today.year, today.month, today.day + 1);
     final from = DateTime(today.year, today.month, today.day - 400);
-    return StreamBuilder<List<Activity>>(
-      stream: db.watchActivities(includeArchived: true),
+    return Live<List<Activity>>(
+      id: 'activities',
+      stream: () => db.watchActivities(includeArchived: true),
       builder: (context, aSnap) {
         final acts = {for (final a in aSnap.data ?? const <Activity>[]) a.id: a};
-        return StreamBuilder<List<({Segment segment, int activityId})>>(
-          stream: db.watchRange(today, tomorrow),
-          builder: (context, tSnap) => StreamBuilder<List<Segment>>(
-            stream: db.watchSegmentsBetween(from, tomorrow),
-            builder: (context, snap) {
+        return Live<List<Segment>>(
+          id: today,
+          stream: () => db.watchSegmentsBetween(from, tomorrow),
+          builder: (context, snap) => Live<List<({Segment segment, int activityId})>>(
+            id: today,
+            stream: () => db.watchRange(today, tomorrow),
+            builder: (context, tSnap) {
               final perActivity = <int, double>{};
               for (final r in tSnap.data ?? const <({Segment segment, int activityId})>[]) {
                 final m = minutesPerDay([r.segment], today, tomorrow, now: n)[today] ?? 0;
@@ -79,12 +82,138 @@ class TodayCard extends StatelessWidget {
               Color colorOf(int id) => activityColor(acts[id]?.color ?? 0xFF93C4A0, dark: tc.dark);
               // The bar is the goal (or the day's total when there is none).
               final whole = goalMinutes > 0 && done < goalMinutes ? goalMinutes.toDouble() : done;
+              final doneText = fmtHm(Duration(minutes: done.floor()));
+              final goalText = goalMinutes > 0 ? '$doneText / ${fmtHm(Duration(minutes: goalMinutes))}' : null;
+
+              final streakChip = streak > 0
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: tc.pauseSoft, borderRadius: BorderRadius.circular(14)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.local_fire_department_rounded, size: 15, color: tc.pause),
+                          const SizedBox(width: 3),
+                          Text(
+                            streak == 1 ? '1 giorno' : '$streak giorni',
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: tc.text),
+                          ),
+                        ],
+                      ),
+                    )
+                  : null;
+
+              final bar = ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  height: hero ? 10 : 12,
+                  color: tc.raised,
+                  child: LayoutBuilder(
+                    builder: (context, box) => Row(
+                      children: [
+                        for (final e in sorted)
+                          AnimatedContainer(
+                            duration: Motion.of(context, Motion.slow),
+                            curve: Motion.curve,
+                            width: whole <= 0 ? 0 : box.maxWidth * e.value / whole,
+                            color: colorOf(e.key),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+
+              final legend = sorted.isEmpty
+                  ? Text(
+                      goalMinutes > 0
+                          ? 'Ancora niente oggi: il primo focus ti avvicina all\'obiettivo.'
+                          : 'Ancora niente oggi.',
+                      textAlign: hero ? TextAlign.center : TextAlign.start,
+                      style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600, fontSize: 13),
+                    )
+                  : Wrap(
+                      alignment: hero ? WrapAlignment.center : WrapAlignment.start,
+                      spacing: 14,
+                      runSpacing: 6,
+                      children: [
+                        for (final e in sorted)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 9,
+                                height: 9,
+                                decoration: BoxDecoration(color: colorOf(e.key), shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                acts[e.key]?.name ?? 'Attività',
+                                style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600, fontSize: 13),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                fmtHm(Duration(minutes: e.value.floor())),
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                              ),
+                            ],
+                          ),
+                      ],
+                    );
+
+              final decoration = BoxDecoration(
+                color: tc.surface.withValues(alpha: tc.dark ? 0.6 : 0.75),
+                borderRadius: BorderRadius.circular(kRadius),
+              );
+
+              if (hero) {
+                return Semantics(
+                  container: true,
+                  label:
+                      'Oggi $doneText${goalText == null ? '' : ', obiettivo ${fmtHm(Duration(minutes: goalMinutes))}'}',
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+                    decoration: decoration,
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Oggi',
+                              style: TextStyle(color: tc.muted, fontWeight: FontWeight.w700),
+                            ),
+                            const Spacer(),
+                            ?streakChip,
+                            if (streakChip == null && reached)
+                              Icon(Icons.emoji_events_rounded, size: 20, color: tc.accent),
+                          ],
+                        ),
+                        ExcludeSemantics(
+                          child: Text(
+                            doneText,
+                            style: timerStyle(context, size: 52).copyWith(fontWeight: FontWeight.w300, height: 1.15),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        bar,
+                        if (goalText != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            reached ? '$goalText · obiettivo raggiunto' : goalText,
+                            style: TextStyle(color: tc.muted, fontWeight: FontWeight.w700, fontSize: 13),
+                          ),
+                        ],
+                        const SizedBox(height: 10),
+                        legend,
+                      ],
+                    ),
+                  ),
+                );
+              }
+
               return Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: tc.surface.withValues(alpha: tc.dark ? 0.6 : 0.75),
-                  borderRadius: BorderRadius.circular(kRadius),
-                ),
+                decoration: decoration,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -93,94 +222,16 @@ class TodayCard extends StatelessWidget {
                       children: [
                         Text('Oggi', style: Theme.of(context).textTheme.titleSmall),
                         const SizedBox(width: 10),
-                        Text(
-                          fmtHm(Duration(minutes: done.floor())),
-                          style: timerStyle(context, size: 26).copyWith(fontWeight: FontWeight.w400, height: 1),
-                        ),
-                        if (goalMinutes > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 6, bottom: 2),
-                            child: Text(
-                              '/ ${fmtHm(Duration(minutes: goalMinutes))}',
-                              style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600, fontSize: 13),
-                            ),
-                          ),
+                        Text(goalText ?? doneText, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                         const Spacer(),
-                        if (streak > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(color: tc.pauseSoft, borderRadius: BorderRadius.circular(14)),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.local_fire_department_rounded, size: 15, color: tc.pause),
-                                const SizedBox(width: 3),
-                                Text(
-                                  streak == 1 ? '1 giorno' : '$streak giorni',
-                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: tc.text),
-                                ),
-                              ],
-                            ),
-                          )
-                        else if (reached)
-                          Icon(Icons.emoji_events_rounded, size: 20, color: tc.accent),
+                        ?streakChip,
+                        if (streakChip == null && reached) Icon(Icons.emoji_events_rounded, size: 20, color: tc.accent),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        height: 12,
-                        color: tc.raised,
-                        child: LayoutBuilder(
-                          builder: (context, box) => Row(
-                            children: [
-                              for (final e in sorted)
-                                AnimatedContainer(
-                                  duration: Motion.of(context, Motion.slow),
-                                  curve: Motion.curve,
-                                  width: whole <= 0 ? 0 : box.maxWidth * e.value / whole,
-                                  color: colorOf(e.key),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                    bar,
                     const SizedBox(height: 10),
-                    if (sorted.isEmpty)
-                      Text(
-                        goalMinutes > 0 ? 'Ancora niente oggi: il primo focus ti avvicina all\'obiettivo.' : 'Ancora niente oggi.',
-                        style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600, fontSize: 13),
-                      )
-                    else
-                      Wrap(
-                        spacing: 14,
-                        runSpacing: 6,
-                        children: [
-                          for (final e in sorted)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 9,
-                                  height: 9,
-                                  decoration: BoxDecoration(color: colorOf(e.key), shape: BoxShape.circle),
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  acts[e.key]?.name ?? 'Attività',
-                                  style: TextStyle(color: tc.muted, fontWeight: FontWeight.w600, fontSize: 13),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  fmtHm(Duration(minutes: e.value.floor())),
-                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
+                    legend,
                   ],
                 ),
               );
@@ -206,14 +257,11 @@ class ActivityHeatmap extends StatelessWidget {
     final lastMonday = DateTime(today.year, today.month, today.day - (today.weekday - 1));
     final start = DateTime(lastMonday.year, lastMonday.month, lastMonday.day - 7 * (weeks - 1));
 
-    return StreamBuilder<List<({Segment segment, int activityId})>>(
-      stream: db.watchRange(start, end),
+    return Live<List<({Segment segment, int activityId})>>(
+      id: start,
+      stream: () => db.watchRange(start, end),
       builder: (context, snap) {
-        final perDay = minutesPerDay(
-          (snap.data ?? const []).map((r) => r.segment),
-          start,
-          end,
-        );
+        final perDay = minutesPerDay((snap.data ?? const []).map((r) => r.segment), start, end);
         final total = perDay.values.fold(0.0, (a, b) => a + b);
         final maxV = perDay.values.fold(0.0, (a, b) => b > a ? b : a);
         return Container(

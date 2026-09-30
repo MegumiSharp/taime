@@ -41,7 +41,7 @@ Future<void> initNotifications({
   await initTz();
   await plugin.initialize(
     settings: const InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      android: AndroidInitializationSettings('@drawable/ic_taime_notif'),
     ),
     onDidReceiveNotificationResponse: onTap,
     onDidReceiveBackgroundNotificationResponse: onBackgroundTap,
@@ -58,7 +58,25 @@ AndroidFlutterLocalNotificationsPlugin? get _android => plugin
 /// own channel id; the previous one is deleted when it changes.
 String reminderChannelId(Settings s) {
   final key = '${s.soundKind}|${s.soundValue}|${s.soundLoop}|${s.soundVibrate}';
-  return 'rem_${key.hashCode.toUnsigned(32).toRadixString(16)}';
+  // FNV-1a: the same id on every run and every isolate (String.hashCode is
+  // not guaranteed to be).
+  var h = 0x811c9dc5;
+  for (final c in key.codeUnits) {
+    h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF;
+  }
+  return 'rem_${h.toRadixString(16)}';
+}
+
+/// Removes reminder channels left over by older sound settings.
+Future<void> dropStaleReminderChannels(Settings s) async {
+  try {
+    final keep = reminderChannelId(s);
+    for (final c in await _android?.getNotificationChannels() ?? const <AndroidNotificationChannel>[]) {
+      if (c.id.startsWith('rem_') && c.id != keep) {
+        await _android?.deleteNotificationChannel(channelId: c.id);
+      }
+    }
+  } catch (_) {}
 }
 
 String? _lastChannel;
@@ -125,19 +143,73 @@ Future<void> scheduleReminder({
   await plugin.cancel(id: kReminderId);
   if (!at.isAfter(DateTime.now())) return;
   await _dropOldChannel(settings);
-  await plugin.zonedSchedule(
+  await _scheduleAlarm(
     id: kReminderId,
-    scheduledDate: tz.TZDateTime.from(at, tz.local),
+    at: at,
     title: title,
     body: body,
-    androidScheduleMode: AndroidScheduleMode.alarmClock,
-    notificationDetails: NotificationDetails(
-      android: _reminderDetails(settings, actions),
-    ),
+    details: NotificationDetails(android: _reminderDetails(settings, actions)),
   );
 }
 
-Future<void> cancelReminder() => plugin.cancel(id: kReminderId);
+/// Schedules like an alarm clock; if the phone refuses exact alarms, falls
+/// back to an exact-while-idle one and then to an inexact one, so a reminder
+/// always arrives (at worst a little late).
+Future<void> _scheduleAlarm({
+  required int id,
+  required DateTime at,
+  required String title,
+  required String body,
+  required NotificationDetails details,
+  String? payload,
+}) async {
+  Object? error;
+  for (final mode in const [
+    AndroidScheduleMode.alarmClock,
+    AndroidScheduleMode.exactAllowWhileIdle,
+    AndroidScheduleMode.inexactAllowWhileIdle,
+  ]) {
+    try {
+      await plugin.zonedSchedule(
+        id: id,
+        scheduledDate: tz.TZDateTime.from(at, tz.local),
+        title: title,
+        body: body,
+        payload: payload,
+        androidScheduleMode: mode,
+        notificationDetails: details,
+      );
+      return;
+    } catch (e) {
+      error = e;
+    }
+  }
+  throw error!;
+}
+
+/// Notification check: the same reminder as a real pause, in [seconds].
+/// Lock the phone to see it light up the screen.
+Future<void> testPauseReminder(Settings settings, {int seconds = 10}) async {
+  await initTz();
+  await _dropOldChannel(settings);
+  await _scheduleAlarm(
+    id: kReminderId + 1,
+    at: DateTime.now().add(Duration(seconds: seconds)),
+    title: 'Prova della pausa',
+    body: 'Se lo schermo si è acceso e hai sentito il suono, i promemoria funzionano.',
+    details: NotificationDetails(android: _reminderDetails(settings, const [])),
+  );
+}
+
+/// Cancels ignore failures: a reminder that cannot be withdrawn must never
+/// stop the data change that asked for it.
+Future<void> _cancel(int id) async {
+  try {
+    await plugin.cancel(id: id);
+  } catch (_) {}
+}
+
+Future<void> cancelReminder() => _cancel(kReminderId);
 
 /// Call with the *old* settings before changing the sound.
 Future<void> deleteReminderChannel(Settings old) async =>
@@ -155,6 +227,17 @@ Future<void> testReminderSound(Settings settings) async {
     ),
   );
 }
+
+/// Asks Android for permission to notify (Android 13+); true when allowed.
+Future<bool> askNotificationPermission() async => await _android?.requestNotificationsPermission() ?? true;
+
+/// Notification check: a to-do reminder, right now.
+Future<void> testTodoNotification() => plugin.show(
+  id: kTodoIdBase,
+  title: 'Prova di un to-do',
+  body: 'I promemoria dei to-do e delle note arrivano così.',
+  notificationDetails: const NotificationDetails(android: _todoDetails),
+);
 
 AndroidNotificationAction action(String id, String title) =>
     AndroidNotificationAction(id, title, showsUserInterface: false);
@@ -179,19 +262,17 @@ Future<void> scheduleTodoReminder({
   await initTz();
   await plugin.cancel(id: kTodoIdBase + todoId);
   if (!at.isAfter(DateTime.now())) return;
-  await plugin.zonedSchedule(
+  await _scheduleAlarm(
     id: kTodoIdBase + todoId,
-    scheduledDate: tz.TZDateTime.from(at, tz.local),
+    at: at,
     title: title,
     body: body,
     payload: 'todo:$todoId',
-    androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    notificationDetails: const NotificationDetails(android: _todoDetails),
+    details: const NotificationDetails(android: _todoDetails),
   );
 }
 
-Future<void> cancelTodoReminder(int todoId) =>
-    plugin.cancel(id: kTodoIdBase + todoId);
+Future<void> cancelTodoReminder(int todoId) => _cancel(kTodoIdBase + todoId);
 
 // --- Note reminders -----------------------------------------------------------
 
@@ -211,18 +292,17 @@ Future<void> scheduleNoteReminder({required int noteId, required DateTime at, re
   await plugin.cancel(id: kNoteIdBase + noteId);
   if (!at.isAfter(DateTime.now())) return;
   final lines = text.trim().split('\n');
-  await plugin.zonedSchedule(
+  await _scheduleAlarm(
     id: kNoteIdBase + noteId,
-    scheduledDate: tz.TZDateTime.from(at, tz.local),
+    at: at,
     title: lines.first.length > 60 ? '${lines.first.substring(0, 60)}…' : lines.first,
     body: lines.length > 1 ? lines.skip(1).join(' ').trim() : 'Nota di Taime',
     payload: 'note:$noteId',
-    androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    notificationDetails: const NotificationDetails(android: _noteDetails),
+    details: const NotificationDetails(android: _noteDetails),
   );
 }
 
-Future<void> cancelNoteReminder(int noteId) => plugin.cancel(id: kNoteIdBase + noteId);
+Future<void> cancelNoteReminder(int noteId) => _cancel(kNoteIdBase + noteId);
 
 // --- "Still there?" -----------------------------------------------------------
 
@@ -242,13 +322,12 @@ const _awayDetails = AndroidNotificationDetails(
 Future<void> scheduleAwayReminder({required DateTime at, required String activity}) async {
   try {
     await initTz();
-    await plugin.zonedSchedule(
+    await _scheduleAlarm(
       id: kAwayId,
-      scheduledDate: tz.TZDateTime.from(at, tz.local),
+      at: at,
       title: 'Il timer è ancora attivo',
       body: '$activity sta ancora contando. Stai ancora lavorando?',
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      notificationDetails: NotificationDetails(
+      details: NotificationDetails(
         android: AndroidNotificationDetails(
           _awayDetails.channelId,
           _awayDetails.channelName,
@@ -263,8 +342,4 @@ Future<void> scheduleAwayReminder({required DateTime at, required String activit
   } catch (_) {}
 }
 
-Future<void> cancelAwayReminder() async {
-  try {
-    await plugin.cancel(id: kAwayId);
-  } catch (_) {}
-}
+Future<void> cancelAwayReminder() => _cancel(kAwayId);

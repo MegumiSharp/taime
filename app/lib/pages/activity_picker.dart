@@ -58,7 +58,7 @@ class _PickerOverlay extends StatelessWidget {
                           style: Theme.of(context).textTheme.headlineSmall,
                         ),
                       ),
-                      IconButton(
+                      IconButton(tooltip: 'Chiudi', 
                         onPressed: () => Navigator.pop(context),
                         icon: const Icon(Icons.close_rounded),
                       ),

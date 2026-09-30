@@ -16,6 +16,7 @@ import 'pages/focus_page.dart';
 import 'pages/onboarding.dart';
 import 'pages/overview_page.dart';
 import 'pages/shop_page.dart';
+import 'pages/whats_new.dart';
 import 'settings.dart';
 import 'theme.dart';
 import 'todo/notes.dart';
@@ -24,30 +25,63 @@ import 'todo/todo_sync.dart';
 import 'tracker.dart';
 import 'ui/motion.dart';
 
+/// Every button outside the app (notifications, widgets) ends up here, in
+/// whichever isolate is alive: the timer actions, or `todo:done:<id>`.
+Future<void> handleNativeAction(String? action) async {
+  if (action != null && action.startsWith('todo:done:')) {
+    final t = await todoById(int.tryParse(action.substring(10)) ?? -1);
+    if (t != null && t.completedAt == null) await completeTodo(t);
+    await pushTodoWidget();
+    return;
+  }
+  await tracker.handleAction(action);
+}
+
 /// Reminder buttons tapped with the app closed: runs in its own isolate with
-/// its own database handle.
+/// its own database handle (the `db` global of that isolate).
 @pragma('vm:entry-point')
 void onBackgroundNotification(NotificationResponse response) async {
   DartPluginRegistrant.ensureInitialized();
-  final bgDb = Db();
-  await initTz();
-  await Tracker(bgDb).handleAction(response.actionId);
-  await bgDb.close();
+  // This isolate may be reused for the next tap: a fresh handle each time.
+  db = Db();
+  tracker = Tracker(db);
+  try {
+    await initializeDateFormatting('it');
+    await initNotifications(requestPermission: false);
+    await handleNativeAction(response.actionId);
+  } finally {
+    await db.close();
+  }
 }
 
-/// Live-notification buttons (pause / resume / stop) with no UI alive: the
-/// native side boots an engine straight into this function.
+/// Notification and widget buttons with no UI alive: the native side boots an
+/// engine straight into this function.
 @pragma('vm:entry-point')
 Future<void> liveActionMain(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
-  final bgDb = Db();
+  db = Db();
+  tracker = Tracker(db);
   try {
+    await initializeDateFormatting('it');
     await initNotifications(requestPermission: false);
-    await Tracker(bgDb).handleAction(args.isEmpty ? null : args.first);
+    await handleNativeAction(args.isEmpty ? null : args.first);
   } finally {
-    await bgDb.close();
+    await db.close();
     await TaimeNative.backgroundDone();
+  }
+}
+
+/// A widget asked for a screen: "todo" or "todo:new".
+void openTarget(String target) {
+  if (!target.startsWith('todo')) return;
+  listsView.value = ListsView.todo;
+  shellTab.value = 1;
+  if (target == 'todo:new') {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) showNewTodo(ctx);
+    });
   }
 }
 
@@ -58,7 +92,7 @@ void onForegroundNotification(NotificationResponse response) {
     shellTab.value = 1;
     return;
   }
-  tracker.handleAction(response.actionId);
+  handleNativeAction(response.actionId);
 }
 
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -74,7 +108,7 @@ Future<void> main() async {
     onBackgroundTap: onBackgroundNotification,
   );
   try {
-    await TaimeNative.registerUi((action) => tracker.handleAction(action));
+    await TaimeNative.registerUi(handleNativeAction, onOpen: openTarget);
   } catch (_) {}
   List<({int id, String name, String spec, bool deleted})> rows(List<CustomSkin> l) => [
     for (final c in l) (id: c.id, name: c.name, spec: c.spec, deleted: c.deleted),
@@ -90,10 +124,16 @@ Future<void> main() async {
   await ensureKittenArt(prefs.activeSkin);
   await tracker.materialize();
   await tracker.sync();
+  dropStaleReminderChannels(prefs);
   resyncTodoReminders();
   resyncNoteReminders();
+  watchTodoWidget();
   maybeAutoBackup();
   runApp(const TaimeApp());
+  try {
+    final target = await TaimeSystem.consumeOpen();
+    if (target != null) openTarget(target);
+  } catch (_) {}
 }
 
 class TaimeApp extends StatefulWidget {
@@ -128,16 +168,24 @@ class _TaimeAppState extends State<TaimeApp> {
         db.refreshAll();
         await tracker.materialize();
         await tracker.sync();
+        // The day may have changed: "Oggi" on the home screen too.
+        pushTodoWidget();
       },
     );
   }
 
+  /// First launch: how Taime works. After an update: what is new, once.
   Future<void> _maybeOnboard() async {
-    if (await db.pref('onboarded') != null) return;
     final ctx = navigatorKey.currentContext;
     if (ctx == null || !ctx.mounted) return;
-    await db.setPref('onboarded', '1');
-    if (ctx.mounted) await showOnboarding(ctx);
+    final seen = await db.pref('seenNews');
+    await db.setPref('seenNews', kNewsVersion);
+    if (await db.pref('onboarded') == null) {
+      await db.setPref('onboarded', '1');
+      if (ctx.mounted) await showOnboarding(ctx);
+    } else if (seen != kNewsVersion && ctx.mounted) {
+      await showWhatsNew(ctx);
+    }
   }
 
   @override

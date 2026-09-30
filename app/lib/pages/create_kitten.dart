@@ -20,7 +20,9 @@ Future<void> openKittenMaker(BuildContext context, {Skin? edit}) async {
   final owned = kSkins.where((s) => s.free || ids.contains(s.id));
   if (!context.mounted) return;
   await Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => _KittenMaker(parts: KittenParts(owned), edit: edit)),
+    MaterialPageRoute<void>(
+      builder: (_) => _KittenMaker(parts: KittenParts(owned), edit: edit),
+    ),
   );
 }
 
@@ -41,7 +43,8 @@ class _KittenMakerState extends State<_KittenMaker> {
   void initState() {
     super.initState();
     final p = widget.parts;
-    _look = widget.edit?.lookJson() ??
+    _look =
+        widget.edit?.lookJson() ??
         {
           'pattern': CoatPattern.tintaUnita.name,
           'base': p.coats.first,
@@ -75,15 +78,16 @@ class _KittenMakerState extends State<_KittenMaker> {
     final spec = jsonEncode(_look);
     final String id;
     if (widget.edit == null) {
-      final row = await db.into(db.customSkins).insert(
-        CustomSkinsCompanion.insert(name: name, spec: spec, createdAt: DateTime.now()),
-      );
+      final row = await db
+          .into(db.customSkins)
+          .insert(CustomSkinsCompanion.insert(name: name, spec: spec, createdAt: DateTime.now()));
       id = '$kCustomPrefix$row';
     } else {
       id = widget.edit!.id;
       final row = int.parse(id.substring(kCustomPrefix.length));
-      await (db.update(db.customSkins)..where((c) => c.id.equals(row)))
-          .write(CustomSkinsCompanion(name: Value(name), spec: Value(spec)));
+      await (db.update(
+        db.customSkins,
+      )..where((c) => c.id.equals(row))).write(CustomSkinsCompanion(name: Value(name), spec: Value(spec)));
     }
     // Draw it right away with the new look (the database listener follows).
     kCustomSkins[id] = Skin.fromLook(id, name, _look);
@@ -105,8 +109,9 @@ class _KittenMakerState extends State<_KittenMaker> {
     if (!ok || !mounted) return;
     final nav = Navigator.of(context);
     final row = int.parse(edit.id.substring(kCustomPrefix.length));
-    await (db.update(db.customSkins)..where((c) => c.id.equals(row)))
-        .write(const CustomSkinsCompanion(deleted: Value(true)));
+    await (db.update(
+      db.customSkins,
+    )..where((c) => c.id.equals(row))).write(const CustomSkinsCompanion(deleted: Value(true)));
     if ((await db.pref('activeSkin')) == edit.id) {
       await db.setPref('activeSkin', kSkins.first.id);
       await ensureKittenArt(kSkins.first.id);
@@ -129,7 +134,11 @@ class _KittenMakerState extends State<_KittenMaker> {
                 padding: const EdgeInsets.fromLTRB(8, 4, 16, 0),
                 child: Row(
                   children: [
-                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
+                    IconButton(
+                      tooltip: 'Indietro',
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
                     Expanded(
                       child: Text(
                         widget.edit == null ? 'Crea il tuo gattino' : 'Modifica ${widget.edit!.name}',
@@ -149,9 +158,7 @@ class _KittenMakerState extends State<_KittenMaker> {
               // The kitten stays in sight while you change it.
               SizedBox(
                 height: 200,
-                child: Center(
-                  child: KittenView(skin: skin, size: 190, showcase: true),
-                ),
+                child: Center(child: KittenView(skin: skin, size: 190, showcase: true)),
               ),
               Expanded(
                 child: ListView(
@@ -256,36 +263,65 @@ class _KittenMakerState extends State<_KittenMaker> {
                     _Section(
                       title: 'In testa',
                       children: [
-                        for (final (a, col) in p.head)
+                        for (final (a, col) in _firstOfEach(p.head))
                           _Thumb(
                             label: a.label,
-                            skin: _skin({'acc': a.name, 'accColor': col}),
-                            selected: skin.accessory == a && (a == Accessory.nessuno || skin.accessoryColor == col),
+                            skin: _skin({'acc': a.name, 'accColor': skin.accessory == a ? skin.accessoryColor : col}),
+                            selected: skin.accessory == a,
                             onTap: () => _set({'acc': a.name, 'accColor': col}),
                           ),
                       ],
                     ),
+                    if (_tintable(skin.accessory))
+                      _Section(
+                        title: 'Colore di ${skin.accessory.label.toLowerCase()}',
+                        children: [
+                          for (final c in _accessoryColors(p.head, skin.accessory))
+                            _Swatch(
+                              color: Color(c),
+                              selected: skin.accessoryColor == c,
+                              onTap: () => _set({'accColor': c}),
+                            ),
+                        ],
+                      ),
                     _Section(
                       title: 'Collo e schiena',
                       children: [
-                        for (final (a, col) in p.neck)
+                        for (final (a, col) in _firstOfEach(p.neck))
                           _Thumb(
                             label: a.label,
-                            skin: _skin({'acc2': a.name, 'acc2Color': col}),
-                            selected: skin.accessory2 == a && (a == Accessory.nessuno || skin.accessory2Color == col),
+                            skin: _skin({
+                              'acc2': a.name,
+                              'acc2Color': skin.accessory2 == a ? skin.accessory2Color : col,
+                            }),
+                            selected: skin.accessory2 == a,
                             onTap: () => _set({'acc2': a.name, 'acc2Color': col}),
                           ),
                       ],
                     ),
+                    if (_tintable(skin.accessory2))
+                      _Section(
+                        title: 'Colore di ${skin.accessory2.label.toLowerCase()}',
+                        children: [
+                          for (final c in _accessoryColors(p.neck, skin.accessory2))
+                            _Swatch(
+                              color: Color(c),
+                              selected: skin.accessory2Color == c,
+                              onTap: () => _set({'acc2Color': c}),
+                            ),
+                        ],
+                      ),
                     _Section(
-                      title: 'Effetto',
+                      title: 'Effetti (fino a due)',
                       children: [
                         for (final e in p.effects)
                           SoftChip(
                             label: e.label,
                             icon: e == Effect.nessuno ? null : Icons.auto_awesome_rounded,
-                            selected: skin.effect == e,
-                            onTap: () => _set({'fx': e.name, 'fx2': Effect.nessuno.name}),
+                            selected: e == Effect.nessuno
+                                ? skin.effect == Effect.nessuno && skin.effect2 == Effect.nessuno
+                                : skin.has(e),
+                            onTap: () => _set(_toggleEffect(skin, e)),
                           ),
                       ],
                     ),
@@ -329,6 +365,55 @@ class _KittenMakerState extends State<_KittenMaker> {
   }
 }
 
+/// Soft colours any accessory can wear, besides the ones it came with.
+const List<int> _kAccessoryColors = [
+  0xFFE89BBE,
+  0xFFE58C8C,
+  0xFFF2A7C3,
+  0xFFF4C27F,
+  0xFFF2C94C,
+  0xFFA9D18E,
+  0xFF8FCFB0,
+  0xFF9DC7EA,
+  0xFF7F93C9,
+  0xFFB89BE3,
+  0xFFFFFAF3,
+  0xFF4A3F5C,
+];
+
+/// Accessories whose colour is drawn from the pick (the helmet is always white).
+bool _tintable(Accessory a) => a != Accessory.nessuno && a != Accessory.casco;
+
+/// One thumbnail per accessory: the colour comes from the row below.
+List<(Accessory, int)> _firstOfEach(List<(Accessory, int)> all) {
+  final seen = <Accessory>{};
+  return [
+    for (final e in all)
+      if (seen.add(e.$1)) e,
+  ];
+}
+
+/// The colours it came with first, then the rest of the soft palette.
+List<int> _accessoryColors(List<(Accessory, int)> owned, Accessory a) => {
+  for (final (x, c) in owned)
+    if (x == a) c,
+  ..._kAccessoryColors,
+}.toList();
+
+/// Effects toggle; with two already on, the newest replaces the second.
+Map<String, Object?> _toggleEffect(Skin skin, Effect e) {
+  if (e == Effect.nessuno) return {'fx': e.name, 'fx2': e.name};
+  final on = [skin.effect, skin.effect2].where((x) => x != Effect.nessuno).toList();
+  if (on.contains(e)) {
+    on.remove(e);
+  } else if (on.length < 2) {
+    on.add(e);
+  } else {
+    on[1] = e;
+  }
+  return {'fx': (on.isNotEmpty ? on[0] : Effect.nessuno).name, 'fx2': (on.length > 1 ? on[1] : Effect.nessuno).name};
+}
+
 class _Section extends StatelessWidget {
   const _Section({required this.title, required this.children});
   final String title;
@@ -348,9 +433,7 @@ class _Section extends StatelessWidget {
             clipBehavior: Clip.none,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final c in children) Padding(padding: const EdgeInsets.only(right: 8), child: c),
-              ],
+              children: [for (final c in children) Padding(padding: const EdgeInsets.only(right: 8), child: c)],
             ),
           ),
         ],
@@ -368,16 +451,20 @@ class _Swatch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tc = context.tc;
-    return TapScale(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: Motion.of(context, Motion.fast),
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(color: selected ? tc.accent : tc.outline, width: selected ? 3 : 1.5),
+    return Semantics(
+      label: 'Colore',
+      selected: selected,
+      child: TapScale(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: Motion.of(context, Motion.fast),
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: selected ? tc.accent : tc.outline, width: selected ? 3 : 1.5),
+          ),
         ),
       ),
     );

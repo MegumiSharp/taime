@@ -113,6 +113,9 @@ class Notes extends Table {
 
   /// Notify at [date] (09:00 when it has no time).
   BoolColumn get remind => boolean().withDefault(const Constant(false))();
+
+  /// Kept at the top of the list.
+  BoolColumn get pinned => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 }
@@ -149,7 +152,7 @@ class Db extends _$Db {
   Db.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -187,6 +190,7 @@ class Db extends _$Db {
         await m.createTable(notes);
         await m.createTable(customSkins);
       }
+      if (from == 3) await m.addColumn(notes, notes.pinned);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -264,9 +268,6 @@ class Db extends _$Db {
   Future<Segment?> openSegment() =>
       (select(segments)..where((s) => s.endedAt.isNull())).getSingleOrNull();
 
-  Stream<Segment?> watchOpenSegment() =>
-      (select(segments)..where((s) => s.endedAt.isNull())).watchSingleOrNull();
-
   Future<List<Segment>> segmentsOf(int sessionId) =>
       (select(segments)
             ..where((s) => s.sessionId.equals(sessionId))
@@ -281,17 +282,6 @@ class Db extends _$Db {
 
   Stream<Session?> watchSession(int id) =>
       (select(sessions)..where((s) => s.id.equals(id))).watchSingleOrNull();
-
-  /// Sessions that overlap [from, to).
-  Stream<List<Session>> watchSessionsBetween(DateTime from, DateTime to) {
-    final q = select(sessions)
-      ..where((s) => s.startedAt.isSmallerThanValue(to))
-      ..where((s) => s.endedAt.isNull() | s.endedAt.isBiggerThanValue(from))
-      ..orderBy([
-        (s) => OrderingTerm(expression: s.startedAt, mode: OrderingMode.desc),
-      ]);
-    return q.watch();
-  }
 
   Stream<List<Segment>> watchSegmentsBetween(DateTime from, DateTime to) {
     final q = select(segments)
@@ -362,9 +352,6 @@ class Db extends _$Db {
 
   Future<void> deleteSegment(int id) =>
       (delete(segments)..where((s) => s.id.equals(id))).go();
-
-  Future<Session?> sessionById(int id) =>
-      (select(sessions)..where((s) => s.id.equals(id))).getSingleOrNull();
 
   /// Rewrites a session and keeps its start/end in step with its segments.
   Future<void> reshapeSession(int id) async {
@@ -443,8 +430,12 @@ class Db extends _$Db {
 
   // --- Notes ----------------------------------------------------------------
 
+  /// Pinned first, then newest first.
   Stream<List<Note>> watchNotes() => (select(notes)
-        ..orderBy([(n) => OrderingTerm(expression: n.createdAt, mode: OrderingMode.desc)]))
+        ..orderBy([
+          (n) => OrderingTerm(expression: n.pinned, mode: OrderingMode.desc),
+          (n) => OrderingTerm(expression: n.createdAt, mode: OrderingMode.desc),
+        ]))
       .watch();
 
   Future<Note?> noteById(int id) => (select(notes)..where((n) => n.id.equals(id))).getSingleOrNull();

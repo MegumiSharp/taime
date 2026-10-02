@@ -82,6 +82,8 @@ class Tracker {
     await materialize();
     final seg = await db.openSegment();
     if (seg == null || seg.isPause) return;
+    // Paused by hand: the work reminder (auto-pause, pomodoro) must not ring.
+    await cancelReminder();
     final now = DateTime.now();
     await _close(seg, now);
     await db
@@ -244,6 +246,7 @@ class Tracker {
     if (seg == null || seg.isPause) await cancelAwayReminder();
     if (seg == null) {
       await cancelReminder();
+      await cancelPauseEndReminder();
       await TaimeNative.liveStop().catchError((_) {});
       await _widgetIdle(s);
       return;
@@ -291,20 +294,24 @@ class Tracker {
   }
 
   Future<void> _scheduleFor(Settings s, Segment seg, List<Segment> segs, int pauseMins) async {
+    // A pause leaves the work reminder alone: when the pause was started by a
+    // deadline, that reminder is the alarm ringing right now.
     if (seg.isPause) {
       if (pauseMins > 0) {
         await scheduleReminder(
           settings: s,
+          id: kPauseEndId,
           at: seg.startedAt.add(Duration(minutes: pauseMins)),
           title: 'Torna al lavoro',
           body: 'La pausa di $pauseMins minuti è finita',
           actions: [action('resume', 'Riprendi')],
         );
       } else {
-        await cancelReminder();
+        await cancelPauseEndReminder();
       }
       return;
     }
+    await cancelPauseEndReminder();
 
     final due = seg.deadlineAt;
     if (s.pomodoro && due != null) {

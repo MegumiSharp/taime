@@ -1,6 +1,9 @@
-# Taime — Specifiche 2.4.1
+# Taime — Specifiche 2.4.2
 
 App Android personale per concentrarsi e tracciare il tempo, nello spirito di Forest: mentre lavori un gattino cresce, il tempo diventa crocchette per comprare nuovi gattini, i giorni riempiono un recinto. Nessun account, nessun server: dati in SQLite sul telefono, con backup.
+
+## Novità 2.4.2
+- Corretto: la notifica stile sveglia della pausa automatica (e del pomodoro finito) non arrivava. Allo scadere la pausa partiva subito e il suo promemoria "Torna al lavoro" prendeva il posto della sveglia, cancellandola. Ora sono due promemoria separati; mettendo in pausa a mano la sveglia della pausa automatica viene annullata.
 
 ## Novità 2.4.1
 - Minou: naso nero e occhi gialli. Wendy: mantello europeo variegato (chiazze calde nocciola sfumate, picchiettature chiare e scure, macchie irregolari, coda con tono caldo). In "Crea il tuo gattino" il naso può essere rosa o nero.

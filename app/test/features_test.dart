@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart' show AndroidFlutterLocalNotificationsPlugin;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:time_tracker/app.dart';
 import 'package:time_tracker/db.dart';
+import 'package:time_tracker/notif.dart' show kPauseEndId, kReminderId;
 import 'package:time_tracker/theme.dart';
 import 'package:time_tracker/todo/checklist.dart';
 import 'package:time_tracker/todo/notes.dart';
@@ -162,5 +164,35 @@ void main() {
     await completeTodo(t);
     await pushTodoWidget(); // must not throw even with nothing on screen
     expect((await todoById(id))!.completedAt, isNotNull);
+  });
+
+  test('the auto-pause alarm survives the pause it starts', () async {
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final calls = <MethodCall>[];
+    const notif = MethodChannel('dexterous.com/flutter/local_notifications');
+    messenger.setMockMethodCallHandler(notif, (call) async {
+      calls.add(call);
+      return null;
+    });
+    messenger.setMockMethodCallHandler(const MethodChannel('flutter_timezone'), (_) async => 'Europe/Rome');
+    addTearDown(() => messenger.setMockMethodCallHandler(notif, (_) async => null));
+    AndroidFlutterLocalNotificationsPlugin.registerWith();
+    List<Object?> ids(String method) => [for (final c in calls.where((c) => c.method == method)) (c.arguments as Map)['id']];
+
+    await db.setPref('breakMode', 'auto');
+    await db.setPref('breakAfterMin', '50');
+    await tracker.start((await db.watchActivities().first).first.id);
+    expect(ids('zonedSchedule'), contains(kReminderId));
+
+    // The deadline falls due and the live service sends "tick".
+    final seg = (await db.openSegment())!;
+    await (db.update(db.segments)..where((x) => x.id.equals(seg.id)))
+        .write(SegmentsCompanion(deadlineAt: Value(DateTime.now().subtract(const Duration(seconds: 1)))));
+    calls.clear();
+    await tracker.handleAction('tick');
+    expect((await db.openSegment())!.isPause, isTrue);
+    expect(ids('cancel'), isNot(contains(kReminderId)));
+    expect(ids('zonedSchedule'), contains(kPauseEndId));
+    await tracker.stop();
   });
 }

@@ -6,19 +6,24 @@ import '../theme.dart';
 import '../ui/widgets.dart';
 
 /// Bump when there is something new to tell: the dialog shows once per value.
-const String kNewsVersion = '2.4';
+const String kNewsVersion = '2.5';
 
 const _news = <(IconData, String, String)>[
+  (
+    Icons.system_update_rounded,
+    'Aggiornamenti in un tocco',
+    'Impostazioni → Aiuto → Cerca aggiornamenti: scarica l\'ultima versione da GitHub e la installa sopra, senza perdere dati.',
+  ),
+  (
+    Icons.alarm_rounded,
+    'La sveglia della pausa automatica',
+    'Ora suona davvero allo scadere, anche per il pomodoro finito.',
+  ),
   (
     Icons.auto_awesome_rounded,
     'Wendy e Minou leggendarie',
     'Ridisegnate dalle foto: Wendy europea variegata con gli occhi verdi, farfalle e scintille smeraldo; '
         'Minou tuxedo con il naso nero, gli occhi gialli e il suo piumino giallo. Se le avevi già, sono ancora tue.',
-  ),
-  (
-    Icons.wb_sunny_rounded,
-    'Ore di oggi sotto Inizia',
-    'A timer fermo o in pausa la scheda Oggi sta sotto Inizia; mentre lavori restano solo i trattini dell\'obiettivo.',
   ),
   (
     Icons.edit_note_rounded,

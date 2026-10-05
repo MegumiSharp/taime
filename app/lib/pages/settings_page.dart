@@ -15,6 +15,7 @@ import '../settings.dart';
 import '../theme.dart';
 import '../ui/motion.dart';
 import '../ui/widgets.dart';
+import '../update.dart';
 import 'activity_picker.dart';
 import 'notif_check.dart';
 import 'onboarding.dart';
@@ -104,6 +105,12 @@ class SettingsPage extends StatelessWidget {
                         icon: Icons.auto_awesome_rounded,
                         title: 'Novità',
                         onTap: () => showWhatsNew(context),
+                      ),
+                      _Row(
+                        icon: Icons.system_update_rounded,
+                        title: 'Cerca aggiornamenti',
+                        subtitle: 'Scarica e installa l\'ultima versione da GitHub',
+                        onTap: () => showUpdate(context),
                       ),
                     ],
                   ),

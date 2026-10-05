@@ -34,6 +34,7 @@ import java.io.File
  *  - widget.update / todoWidget.update: the two home-screen widgets;
  *  - notif.status / settings.open: the notification check in Impostazioni;
  *  - open.consume: which screen a widget tap asked for;
+ *  - update.abi / update.install: "Cerca aggiornamenti";
  *  - sound.*: system sound picker, alarm-stream preview, shareable file uris.
  */
 class TaimeNativePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware,
@@ -122,6 +123,8 @@ class TaimeNativePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                     result.success(pendingOpen)
                     pendingOpen = null
                 }
+                "update.abi" -> result.success(if (Build.SUPPORTED_ABIS.firstOrNull()?.startsWith("arm64") == true) "arm64" else "arm32")
+                "update.install" -> result.success(installApk(call.arguments as String))
                 "sound.pickSystem" -> pickSystemSound(call.argument<String>("current"), result)
                 "sound.shareableUri" -> result.success(shareableUri(call.arguments as String))
                 "sound.preview" -> {
@@ -273,6 +276,28 @@ class TaimeNativePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 // Not on this phone: fall back to the app page.
             }
         }
+    }
+
+    // --- Updates ---------------------------------------------------------------
+
+    /**
+     * Opens Android's installer on a downloaded APK (in cache/updates). False,
+     * with the permission page opened instead, until "Installa app
+     * sconosciute" is allowed for Taime.
+     */
+    private fun installApk(path: String): Boolean {
+        val pkg = context.packageName
+        val intent = if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
+            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$pkg"))
+        } else {
+            val uri = FileProvider.getUriForFile(context, "$pkg.taime.files", File(path))
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val act = activity
+        if (act != null) act.startActivity(intent) else context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        return intent.action == Intent.ACTION_VIEW
     }
 
     // --- Opening a screen from a widget -----------------------------------------

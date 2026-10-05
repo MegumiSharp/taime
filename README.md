@@ -4,7 +4,7 @@
 
 App Android personale per concentrarsi e tenere traccia del tempo, nello spirito di Forest: mentre lavori un gattino cresce, i minuti diventano crocchette per adottare altri gattini e ogni giorno riempie un recinto.
 
-Nessun account, nessun server, nessuna pubblicità: tutto resta sul telefono (SQLite), con backup automatico ed export.
+Nessun account, nessun server, nessuna pubblicità: tutto resta sul telefono (SQLite), con backup automatico ed export. Va in rete solo quando tocchi "Cerca aggiornamenti", per scaricare l'ultima release da GitHub (non invia niente).
 
 ## Cosa fa
 

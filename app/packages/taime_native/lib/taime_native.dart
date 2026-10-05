@@ -119,6 +119,13 @@ abstract final class TaimeSystem {
   static Future<void> openSettings(String what, {String? channel}) =>
       _ch.invokeMethod('settings.open', {'what': what, 'channel': channel});
 
+  /// Which release APK fits this phone: "arm64" or "arm32".
+  static Future<String> abi() async => (await _ch.invokeMethod<String>('update.abi'))!;
+
+  /// Opens the installer on a downloaded APK; false when Android first asks
+  /// to allow installing apps (that page is opened instead).
+  static Future<bool> installApk(String path) async => (await _ch.invokeMethod<bool>('update.install', path))!;
+
   /// The screen a widget tap asked for when it launched the app, once.
   static Future<String?> consumeOpen() => _ch.invokeMethod<String>('open.consume');
 

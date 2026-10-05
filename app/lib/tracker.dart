@@ -243,7 +243,6 @@ class Tracker {
   Future<void> _sync() async {
     final seg = await db.openSegment();
     final s = await _settings();
-    if (seg == null || seg.isPause) await cancelAwayReminder();
     if (seg == null) {
       await cancelReminder();
       await cancelPauseEndReminder();

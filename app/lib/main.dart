@@ -152,18 +152,7 @@ class _TaimeAppState extends State<TaimeApp> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => Future.delayed(const Duration(milliseconds: 600), _maybeOnboard));
     _listener = AppLifecycleListener(
-      onHide: () async {
-        final session = await db.openSession();
-        final seg = await db.openSegment();
-        if (session == null || seg == null || seg.isPause) return;
-        final act = await db.activityById(session.activityId);
-        await scheduleAwayReminder(
-          at: DateTime.now().add(const Duration(minutes: 15)),
-          activity: act?.name ?? 'Il focus',
-        );
-      },
       onResume: () async {
-        await cancelAwayReminder();
         maybeAutoBackup();
         // Another isolate (notification buttons) may have changed the file.
         db.refreshAll();

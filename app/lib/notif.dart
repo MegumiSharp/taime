@@ -73,9 +73,12 @@ String reminderChannelId(Settings s) {
   return 'rem_${h.toRadixString(16)}';
 }
 
-/// Removes reminder channels left over by older sound settings.
+/// Removes reminder channels left over by older sound settings, and the
+/// "Il timer è ancora attivo" warning dropped in 2.5.2 (id 3, channel away).
 Future<void> dropStaleReminderChannels(Settings s) async {
   try {
+    await _cancel(3);
+    await _android?.deleteNotificationChannel(channelId: 'away');
     final keep = reminderChannelId(s);
     for (final c in await _android?.getNotificationChannels() ?? const <AndroidNotificationChannel>[]) {
       if (c.id.startsWith('rem_') && c.id != keep) {
@@ -312,43 +315,3 @@ Future<void> scheduleNoteReminder({required int noteId, required DateTime at, re
 }
 
 Future<void> cancelNoteReminder(int noteId) => _cancel(kNoteIdBase + noteId);
-
-// --- "Still there?" -----------------------------------------------------------
-
-const int kAwayId = 3;
-
-const _awayDetails = AndroidNotificationDetails(
-  'away',
-  'Timer dimenticato',
-  channelDescription: 'Avvisa se l\'app resta in background con un timer attivo',
-  importance: Importance.high,
-  priority: Priority.high,
-  category: AndroidNotificationCategory.reminder,
-);
-
-/// With the app in the background and a timer running, nudge after a while.
-/// Uses the phone's default notification sound.
-Future<void> scheduleAwayReminder({required DateTime at, required String activity}) async {
-  try {
-    await initTz();
-    await _scheduleAlarm(
-      id: kAwayId,
-      at: at,
-      title: 'Il timer è ancora attivo',
-      body: '$activity sta ancora contando. Stai ancora lavorando?',
-      details: NotificationDetails(
-        android: AndroidNotificationDetails(
-          _awayDetails.channelId,
-          _awayDetails.channelName,
-          channelDescription: _awayDetails.channelDescription,
-          importance: Importance.high,
-          priority: Priority.high,
-          category: AndroidNotificationCategory.reminder,
-          actions: [action('pause', 'Pausa'), action('stop', 'Termina')],
-        ),
-      ),
-    );
-  } catch (_) {}
-}
-
-Future<void> cancelAwayReminder() => _cancel(kAwayId);

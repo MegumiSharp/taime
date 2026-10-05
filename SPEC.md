@@ -1,6 +1,9 @@
-# Taime — Specifiche 2.5.1
+# Taime — Specifiche 2.5.2
 
 App Android personale per concentrarsi e tracciare il tempo, nello spirito di Forest: mentre lavori un gattino cresce, il tempo diventa crocchette per comprare nuovi gattini, i giorni riempiono un recinto. Nessun account, nessun server: dati in SQLite sul telefono, con backup.
+
+## Novità 2.5.2
+- Tolto l'avviso "Il timer è ancora attivo": suonava 15 minuti dopo essere usciti dall'app con il timer avviato, quindi a metà di ogni focus col telefono bloccato (prima della 2.5.1 non partiva mai). La notifica del timer è già sempre visibile e le pause hanno i loro promemoria.
 
 ## Novità 2.5.1
 - Corretto: nessun promemoria programmato partiva (fine pausa, pausa automatica, pomodoro, to-do, note, "Prova della pausa"), e i tasti nelle notifiche (Riprendi, Sì, No continua…) non facevano nulla. Al manifest mancavano i ricevitori di flutter_local_notifications. Un test ora controlla che ci siano.
@@ -49,7 +52,7 @@ App Android personale per concentrarsi e tracciare il tempo, nello spirito di Fo
 - 52 gattini (20 nuovi: mago, strega, angioletto, fantasmino, drago, astronauta...), effetti (fluttuare, magia, bolle, neve, cuori, stelle cadenti, coriandoli, fuochi fatui); ogni leggendario ha un effetto.
 - Azioni casuali dei gattini ogni 25–70 s: mosca, bottiglia, sbadiglio, farfalla, gomitolo, starnuto.
 - Notifica ridisegnata (non più stile musicale), si aggiorna da sola ogni 30 s e torna dopo il riavvio.
-- Avviso se l'app resta in background 15 minuti con un timer attivo (suono di notifica predefinito).
+- Avviso se l'app resta in background 15 minuti con un timer attivo (tolto nella 2.5.2).
 - Obiettivo giornaliero con giorni di fila, Album dei gattini, widget Home, backup automatico settimanale in Download/Taime, pausa lunga del Pomodoro, spiegazione alla prima apertura.
 
 ## Stack

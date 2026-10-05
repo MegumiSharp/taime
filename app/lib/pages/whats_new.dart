@@ -6,7 +6,7 @@ import '../theme.dart';
 import '../ui/widgets.dart';
 
 /// Bump when there is something new to tell: the dialog shows once per value.
-const String kNewsVersion = '2.5';
+const String kNewsVersion = '2.5.1';
 
 const _news = <(IconData, String, String)>[
   (
@@ -16,8 +16,9 @@ const _news = <(IconData, String, String)>[
   ),
   (
     Icons.alarm_rounded,
-    'La sveglia della pausa automatica',
-    'Ora suona davvero allo scadere, anche per il pomodoro finito.',
+    'Promemoria che arrivano davvero',
+    'Le sveglie programmate (pausa, pausa automatica, pomodoro, to-do e note) non partivano mai, e i tasti '
+        'nelle notifiche non facevano nulla. Ora funzionano.',
   ),
   (
     Icons.auto_awesome_rounded,

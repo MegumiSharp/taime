@@ -166,6 +166,13 @@ void main() {
     expect((await todoById(id))!.completedAt, isNotNull);
   });
 
+  test('scheduled reminders and their buttons have receivers', () {
+    final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    for (final r in ['ScheduledNotificationReceiver', 'ScheduledNotificationBootReceiver', 'ActionBroadcastReceiver']) {
+      expect(manifest, contains('com.dexterous.flutterlocalnotifications.$r'));
+    }
+  });
+
   test('the auto-pause alarm survives the pause it starts', () async {
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     final calls = <MethodCall>[];

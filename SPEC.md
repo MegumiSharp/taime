@@ -1,6 +1,9 @@
-# Taime — Specifiche 2.5
+# Taime — Specifiche 2.5.1
 
 App Android personale per concentrarsi e tracciare il tempo, nello spirito di Forest: mentre lavori un gattino cresce, il tempo diventa crocchette per comprare nuovi gattini, i giorni riempiono un recinto. Nessun account, nessun server: dati in SQLite sul telefono, con backup.
+
+## Novità 2.5.1
+- Corretto: nessun promemoria programmato partiva (fine pausa, pausa automatica, pomodoro, to-do, note, "Prova della pausa"), e i tasti nelle notifiche (Riprendi, Sì, No continua…) non facevano nulla. Al manifest mancavano i ricevitori di flutter_local_notifications. Un test ora controlla che ci siano.
 
 ## Novità 2.5
 - **Cerca aggiornamenti** (Impostazioni → Aiuto): legge l'ultima release di GitHub, scarica l'APK adatto al telefono (arm64 o arm32) e apre l'installazione di Android, che lo mette sopra senza perdere dati. La prima volta Android chiede di permettere a Taime di installare app. È l'unico momento in cui Taime va in rete e non invia nulla; Android accetta solo APK firmati con la stessa chiave.

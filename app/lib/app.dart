@@ -2,7 +2,7 @@ import 'db.dart';
 import 'tracker.dart';
 
 /// Keep in step with `version:` in pubspec.yaml (a test checks it).
-const String kAppVersion = '2.5.0';
+const String kAppVersion = '2.5.1';
 
 /// App-wide handles. Top-level variables start lazily, so tests can assign an
 /// in-memory database before anything reads these.

@@ -16,6 +16,7 @@ import '../todo/todo_sync.dart';
 import '../tracker.dart';
 import '../ui/motion.dart';
 import '../ui/widgets.dart';
+import '../water.dart';
 import 'activity_picker.dart';
 import 'heatmap.dart';
 import 'overview_page.dart' show overviewRequest;
@@ -142,6 +143,7 @@ class _FocusPageState extends State<FocusPage> {
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
           children: [
             _TopBar(
+              water: s.waterOn ? WaterChip(settings: s, now: _now) : null,
               cats: running ? adults : 0,
               skin: skin,
               extraSeconds: running && !paused ? _now.difference(open.startedAt).inSeconds : 0,
@@ -345,8 +347,11 @@ class _FocusPageState extends State<FocusPage> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onSettings, required this.extraSeconds, required this.cats, required this.skin});
+  const _TopBar({required this.onSettings, required this.extraSeconds, required this.cats, required this.skin, this.water});
   final VoidCallback onSettings;
+
+  /// Today's glasses, when "Bevi acqua" is on.
+  final Widget? water;
   final int extraSeconds;
 
   /// Adult cats earned in this session so far.
@@ -367,6 +372,7 @@ class _TopBar extends StatelessWidget {
             minimumSize: const Size(46, 46),
           ),
         ),
+        if (water != null) ...[const SizedBox(width: 8), water!],
         const Spacer(),
         AnimatedSwitcher(
           duration: Motion.of(context, Motion.medium),

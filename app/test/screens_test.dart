@@ -14,6 +14,7 @@ import 'package:time_tracker/pages/focus_page.dart';
 import 'package:time_tracker/pages/overview_page.dart';
 import 'package:time_tracker/pages/settings_page.dart';
 import 'package:time_tracker/pages/shop_page.dart';
+import 'package:time_tracker/pages/water_page.dart';
 import 'package:time_tracker/pages/whats_new.dart';
 import 'package:time_tracker/settings.dart';
 import 'package:time_tracker/theme.dart';
@@ -53,6 +54,8 @@ void main() {
     await db.into(db.todos).insert(TodosCompanion.insert(title: 'Scaduto', createdAt: DateTime(2026, 9, 1), due: Value(now.subtract(const Duration(days: 2)))));
     await db.into(db.notes).insert(NotesCompanion.insert(body: 'Spesa\n☐ latte\n☑ pane', createdAt: now, updatedAt: now, pinned: const Value(true), color: const Value(0xFFA9D18E)));
     await db.setPref('dailyGoalMin', '180');
+    await db.setPref('waterOn', '1');
+    await db.setPref(waterKey(now), '3');
   }
 
   Future<void> show(WidgetTester tester, Widget page, {bool dark = false, double textScale = 1, double height = 640}) async {
@@ -101,6 +104,8 @@ void main() {
     'Panoramica': () => const OverviewPage(settings: Settings.empty),
     'Negozio': () => const ShopPage(settings: Settings.empty),
     'Impostazioni': () => const SettingsPage(),
+    'Focus con acqua': () => FocusPage(settings: Settings({'waterOn': '1', waterKey(DateTime.now()): '3'})),
+    'Acqua': () => const WaterPage(),
   };
 
   for (final e in pages.entries) {
@@ -127,6 +132,22 @@ void main() {
       }, timeout: const Timeout(Duration(seconds: 60)));
     }
   }
+
+  testWidgets('Acqua di oggi: a glass from the Focus chip', (tester) async {
+    await tester.runAsync(seed);
+    await show(tester, FocusPage(settings: Settings({'waterOn': '1', waterKey(DateTime.now()): '3'})), textScale: 1.3);
+    await tester.tap(find.text('3/8'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Acqua di oggi'), findsOneWidget);
+    await tester.tap(find.text('Ho bevuto'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('4 di 8'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+  }, timeout: const Timeout(Duration(seconds: 60)));
 
   testWidgets('Note, with a pinned checklist', (tester) async {
     await tester.runAsync(seed);

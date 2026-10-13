@@ -6,9 +6,16 @@ import '../theme.dart';
 import '../ui/widgets.dart';
 
 /// Bump when there is something new to tell: the dialog shows once per value.
-const String kNewsVersion = '2.5.1';
+const String kNewsVersion = '2.6';
 
 const _news = <(IconData, String, String)>[
+  (
+    Icons.water_drop_rounded,
+    'Bevi acqua',
+    'Impostazioni → Acqua: ogni quanto, in che orari e giorni (o solo durante il focus), quanti bicchieri, '
+        'messaggio e suono. Accende lo schermo con "Ho bevuto" e "Più tardi", senza mai fermare il timer. '
+        'I bicchieri di oggi sono in alto nel Focus.',
+  ),
   (
     Icons.system_update_rounded,
     'Aggiornamenti in un tocco',

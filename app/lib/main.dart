@@ -24,10 +24,13 @@ import 'todo/todo_page.dart';
 import 'todo/todo_sync.dart';
 import 'tracker.dart';
 import 'ui/motion.dart';
+import 'water.dart';
 
 /// Every button outside the app (notifications, widgets) ends up here, in
 /// whichever isolate is alive: the timer actions, or `todo:done:<id>`.
 Future<void> handleNativeAction(String? action) async {
+  if (action == 'water:drink') return addWater(1, fromNotification: true);
+  if (action == 'water:plan') return pushWater();
   if (action != null && action.startsWith('todo:done:')) {
     final t = await todoById(int.tryParse(action.substring(10)) ?? -1);
     if (t != null && t.completedAt == null) await completeTodo(t);

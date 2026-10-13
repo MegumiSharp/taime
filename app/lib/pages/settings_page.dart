@@ -16,9 +16,11 @@ import '../theme.dart';
 import '../ui/motion.dart';
 import '../ui/widgets.dart';
 import '../update.dart';
+import '../water.dart' show pushWater;
 import 'activity_picker.dart';
 import 'notif_check.dart';
 import 'onboarding.dart';
+import 'water_page.dart';
 import 'whats_new.dart';
 import '../todo/notes.dart' show resyncNoteReminders;
 import '../todo/todo_sync.dart' show pushTodoWidget, resyncTodoReminders;
@@ -46,13 +48,26 @@ class SettingsPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  _Section(title: 'Aspetto', children: [_Appearance(s: s)]),
-                  _Section(title: 'Attività', children: [const _Activities()]),
-                  _Section(title: 'Pause', children: [_Breaks(s: s)]),
-                  _Section(
+                  SettingsSection(title: 'Aspetto', children: [_Appearance(s: s)]),
+                  SettingsSection(title: 'Attività', children: [const _Activities()]),
+                  SettingsSection(title: 'Pause', children: [_Breaks(s: s)]),
+                  SettingsSection(
+                    title: 'Acqua',
+                    children: [
+                      SettingsRow(
+                        icon: Icons.water_drop_rounded,
+                        title: 'Bevi acqua',
+                        subtitle: waterSettingsSummary(s),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const WaterPage()),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SettingsSection(
                     title: 'Notifiche',
                     children: [
-                      _Row(
+                      SettingsRow(
                         icon: Icons.notifications_active_rounded,
                         title: 'Controlla le notifiche',
                         subtitle: 'Permessi, batteria e una prova della pausa',
@@ -62,12 +77,12 @@ class SettingsPage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  _Section(title: 'Suono dei promemoria', children: [_Sounds(s: s)]),
-                  _Section(title: 'Pomodoro', children: [_Pomodoro(s: s)]),
-                  _Section(
+                  SettingsSection(title: 'Suono dei promemoria', children: [_Sounds(s: s)]),
+                  SettingsSection(title: 'Pomodoro', children: [_Pomodoro(s: s)]),
+                  SettingsSection(
                     title: 'Generale',
                     children: [
-                      _Choice(
+                      ChoiceRow(
                         label: 'Obiettivo giornaliero',
                         value: s.dailyGoalMin,
                         options: const {
@@ -84,7 +99,7 @@ class SettingsPage extends StatelessWidget {
                         onChanged: (v) => db.setPref('dailyGoalMin', '$v'),
                       ),
                       const SizedBox(height: 10),
-                      _Choice(
+                      ChoiceRow(
                         label: 'La settimana inizia',
                         value: s.weekStart,
                         options: const {1: 'Lunedì', 7: 'Domenica'},
@@ -92,21 +107,21 @@ class SettingsPage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  _Section(title: 'Backup', children: [_Backup(s: s)]),
-                  _Section(
+                  SettingsSection(title: 'Backup', children: [_Backup(s: s)]),
+                  SettingsSection(
                     title: 'Aiuto',
                     children: [
-                      _Row(
+                      SettingsRow(
                         icon: Icons.lightbulb_rounded,
                         title: 'Come funziona Taime',
                         onTap: () => showOnboarding(context),
                       ),
-                      _Row(
+                      SettingsRow(
                         icon: Icons.auto_awesome_rounded,
                         title: 'Novità',
                         onTap: () => showWhatsNew(context),
                       ),
-                      _Row(
+                      SettingsRow(
                         icon: Icons.system_update_rounded,
                         title: 'Cerca aggiornamenti',
                         subtitle: 'Scarica e installa l\'ultima versione da GitHub',
@@ -131,8 +146,8 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
+class SettingsSection extends StatelessWidget {
+  const SettingsSection({super.key, required this.title, required this.children});
   final String title;
   final List<Widget> children;
 
@@ -154,8 +169,8 @@ class _Section extends StatelessWidget {
   }
 }
 
-class _Row extends StatelessWidget {
-  const _Row({required this.icon, required this.title, this.subtitle, this.onTap});
+class SettingsRow extends StatelessWidget {
+  const SettingsRow({super.key, required this.icon, required this.title, this.subtitle, this.onTap});
   final IconData icon;
   final String title;
   final String? subtitle;
@@ -172,19 +187,19 @@ class _Row extends StatelessWidget {
   );
 }
 
-class _Choice extends StatelessWidget {
-  const _Choice({required this.label, required this.value, required this.options, required this.onChanged});
+class ChoiceRow<T> extends StatelessWidget {
+  const ChoiceRow({super.key, required this.label, required this.value, required this.options, required this.onChanged});
   final String label;
-  final int value;
-  final Map<int, String> options;
-  final ValueChanged<int> onChanged;
+  final T value;
+  final Map<T, String> options;
+  final ValueChanged<T> onChanged;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
-        PopupMenuButton<int>(
+        PopupMenuButton<T>(
           initialValue: value,
           onSelected: onChanged,
           itemBuilder: (_) => [for (final e in options.entries) PopupMenuItem(value: e.key, child: Text(e.value))],
@@ -413,7 +428,7 @@ class _Breaks extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Choice(
+        ChoiceRow(
           label: 'Promemoria pausa dopo',
           value: s.breakAfterMin,
           options: const {0: 'Mai', 30: '30 min', 45: '45 min', 60: '1 ora', 90: '1h 30m', 120: '2 ore', 180: '3 ore'},
@@ -436,7 +451,7 @@ class _Breaks extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 12),
-        _Choice(
+        ChoiceRow(
           label: 'Fine pausa dopo',
           value: s.pauseReminderMin,
           options: const {0: 'Mai', 5: '5 min', 10: '10 min', 15: '15 min', 20: '20 min', 30: '30 min'},
@@ -497,7 +512,7 @@ class _Sounds extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 6),
-        _Row(
+        SettingsRow(
           icon: Icons.library_music_rounded,
           title: 'Suoni del telefono',
           subtitle: s.soundKind == 'system' ? s.soundName : 'Sveglie, suonerie e notifiche',
@@ -508,7 +523,7 @@ class _Sounds extends StatelessWidget {
             } catch (_) {}
           },
         ),
-        _Row(
+        SettingsRow(
           icon: Icons.audio_file_rounded,
           title: 'Un mio file audio',
           subtitle: s.soundKind == 'file' ? s.soundName : 'Scegli un file dalla memoria',
@@ -583,28 +598,28 @@ class _Pomodoro extends StatelessWidget {
           onChanged: (v) => _set('pomodoro', v ? '1' : '0'),
         ),
         if (s.pomodoro) ...[
-          _Choice(
+          ChoiceRow(
             label: 'Lavoro',
             value: s.pomoWorkMin,
             options: const {15: '15 min', 25: '25 min', 30: '30 min', 45: '45 min', 50: '50 min'},
             onChanged: (v) => _set('pomoWorkMin', '$v'),
           ),
           const SizedBox(height: 10),
-          _Choice(
+          ChoiceRow(
             label: 'Pausa',
             value: s.pomoBreakMin,
             options: const {3: '3 min', 5: '5 min', 10: '10 min', 15: '15 min'},
             onChanged: (v) => _set('pomoBreakMin', '$v'),
           ),
           const SizedBox(height: 10),
-          _Choice(
+          ChoiceRow(
             label: 'Pausa lunga',
             value: s.pomoLongBreakMin,
             options: const {10: '10 min', 15: '15 min', 20: '20 min', 30: '30 min'},
             onChanged: (v) => _set('pomoLongBreakMin', '$v'),
           ),
           const SizedBox(height: 10),
-          _Choice(
+          ChoiceRow(
             label: 'Pausa lunga ogni',
             value: s.pomoEvery,
             options: const {2: '2 pomodori', 3: '3 pomodori', 4: '4 pomodori', 5: '5 pomodori', 6: '6 pomodori'},
@@ -639,7 +654,7 @@ class _Backup extends StatelessWidget {
           value: s.autoBackup,
           onChanged: (v) => db.setPref('autoBackup', v ? '1' : '0'),
         ),
-        _Row(
+        SettingsRow(
           icon: Icons.backup_rounded,
           title: 'Fai un backup adesso',
           subtitle: 'Nella stessa cartella Download/Taime',
@@ -649,19 +664,19 @@ class _Backup extends StatelessWidget {
             messenger.showSnackBar(SnackBar(content: Text(ok ? 'Backup salvato in Download/Taime' : 'Backup non riuscito')));
           },
         ),
-        _Row(
+        SettingsRow(
           icon: Icons.ios_share_rounded,
           title: 'Esporta backup (JSON)',
           subtitle: 'Condividi su Drive, Telegram, email…',
           onTap: exportJson,
         ),
-        _Row(
+        SettingsRow(
           icon: Icons.table_chart_rounded,
           title: 'Esporta CSV',
           subtitle: 'Per Excel o Fogli Google',
           onTap: exportCsv,
         ),
-        _Row(
+        SettingsRow(
           icon: Icons.download_rounded,
           title: 'Importa backup',
           subtitle: 'Anche i backup della 1.0. Sostituisce i dati attuali.',
@@ -681,6 +696,7 @@ class _Backup extends StatelessWidget {
             await resyncTodoReminders();
             await resyncNoteReminders();
             await pushTodoWidget();
+            await pushWater();
             messenger.showSnackBar(SnackBar(content: Text(msg)));
           },
         ),

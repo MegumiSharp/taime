@@ -9,6 +9,7 @@ import 'notif.dart';
 import 'palette.dart';
 import 'settings.dart';
 import 'theme.dart';
+import 'water.dart';
 
 /// Deadline kinds stored on a segment.
 const kAutoPause = 'autoPause'; // work segment: turn into a pause when it expires
@@ -238,6 +239,8 @@ class Tracker {
     try {
       await _sync();
     } catch (_) {}
+    // "Solo in focus" water reminders follow the session.
+    await pushWater(database: db);
   }
 
   Future<void> _sync() async {

@@ -9,6 +9,7 @@ Nessun account, nessun server, nessuna pubblicità: tutto resta sul telefono (SQ
 ## Cosa fa
 
 - **Focus**: scegli l'attività, premi Inizia e il gattino cresce fino a diventare adulto dopo un'ora. Hai pausa, Pomodoro con pausa lunga e pausa automatica che accende lo schermo come una sveglia. La scheda "Oggi" mostra le ore del giorno.
+- **Bevi acqua**: promemoria per bere completamente personalizzabili (intervallo, orari e giorni o solo durante il focus, obiettivo in bicchieri, messaggio, suono). Accendono lo schermo con "Ho bevuto" e "Più tardi" e non fermano mai il timer. I bicchieri di oggi sono in alto nel Focus.
 - **To-do e note**: to-do divisi in Oggi / Questa settimana / Più avanti, con date scritte in italiano ("domani alle 15"), ripetizioni, promemoria e ricerca. Le note hanno colori, caselle da spuntare, date, notifiche e si possono fissare in alto.
 - **Panoramica**: recinto isometrico (giorno, settimana, mese, anno), registro modificabile e statistiche.
 - **Negozio**: 69 gattini disegnati in codice in 4 rarità, più un album. Con "Crea il tuo gattino" ne componi fino a 5 con gli stili di quelli adottati.

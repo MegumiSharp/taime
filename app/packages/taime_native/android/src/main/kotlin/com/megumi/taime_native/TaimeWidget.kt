@@ -208,10 +208,17 @@ class TaimeTodoWidget : AppWidgetProvider() {
     }
 }
 
-/** After a reboot, bring the focus notification and the widget back. */
+/** After a reboot or an update, bring the focus notification, the widgets
+ *  and the water alarm back. */
 class TaimeBootReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != "android.intent.action.QUICKBOOT_POWERON") return
+        if (intent.action !in listOf(
+                Intent.ACTION_BOOT_COMPLETED,
+                "android.intent.action.QUICKBOOT_POWERON",
+                Intent.ACTION_MY_PACKAGE_REPLACED,
+            )
+        ) return
+        Water.arm(context)
         TaimeWidget.refresh(context)
         TaimeTodoWidget.refresh(context)
         if (context.getSharedPreferences(LiveService.PREFS, Context.MODE_PRIVATE).getBoolean("live", false)) {

@@ -119,6 +119,35 @@ abstract final class TaimeSystem {
   static Future<void> openSettings(String what, {String? channel}) =>
       _ch.invokeMethod('settings.open', {'what': what, 'channel': channel});
 
+  /// "Bevi acqua": the planned reminder times (epoch ms), today's glasses and
+  /// how the notification looks. [drank]: a glass was just counted in the app.
+  static Future<void> waterUpdate({
+    required List<int> plan,
+    required int count,
+    required String day,
+    required int goal,
+    required int glass,
+    required int snooze,
+    required String text,
+    required String sound,
+    String? art,
+    bool drank = false,
+  }) => _ch.invokeMethod('water.update', {
+    'plan': plan,
+    'count': count,
+    'day': day,
+    'goal': goal,
+    'glass': glass,
+    'snooze': snooze,
+    'text': text,
+    'sound': sound,
+    'art': art,
+    'drank': drank,
+  });
+
+  /// The water reminder in 10 seconds, whatever the hours and the goal.
+  static Future<void> waterTest() => _ch.invokeMethod('water.test');
+
   /// Which release APK fits this phone: "arm64" or "arm32".
   static Future<String> abi() async => (await _ch.invokeMethod<String>('update.abi'))!;
 

@@ -35,6 +35,7 @@ import java.io.File
  *  - notif.status / settings.open: the notification check in Impostazioni;
  *  - open.consume: which screen a widget tap asked for;
  *  - update.abi / update.install: "Cerca aggiornamenti";
+ *  - water.update / water.test: "Bevi acqua" ([Water]);
  *  - sound.*: system sound picker, alarm-stream preview, shareable file uris.
  */
 class TaimeNativePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware,
@@ -122,6 +123,15 @@ class TaimeNativePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activi
                 "open.consume" -> {
                     result.success(pendingOpen)
                     pendingOpen = null
+                }
+                "water.update" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    Water.update(context, call.arguments as Map<String, Any?>)
+                    result.success(null)
+                }
+                "water.test" -> {
+                    Water.test(context)
+                    result.success(null)
                 }
                 "update.abi" -> result.success(if (Build.SUPPORTED_ABIS.firstOrNull()?.startsWith("arm64") == true) "arm64" else "arm32")
                 "update.install" -> result.success(installApk(call.arguments as String))

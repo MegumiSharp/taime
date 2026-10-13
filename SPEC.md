@@ -1,6 +1,14 @@
-# Taime — Specifiche 2.5.2
+# Taime — Specifiche 2.6
 
 App Android personale per concentrarsi e tracciare il tempo, nello spirito di Forest: mentre lavori un gattino cresce, il tempo diventa crocchette per comprare nuovi gattini, i giorni riempiono un recinto. Nessun account, nessun server: dati in SQLite sul telefono, con backup.
+
+## Novità 2.6
+- **Bevi acqua** (Impostazioni → Acqua, o tocca i bicchieri in alto nel Focus).
+  - Promemoria: "Negli orari" (ogni 15 min–3 ore, fascia oraria anche oltre mezzanotte, giorni della settimana) oppure "Solo in focus" (durante una sessione, pause comprese). Dopo un bicchiere il conto riparte da lì. Raggiunto l'obiettivo, per oggi tacciono.
+  - Obiettivo in bicchieri (1–16) e misura del bicchiere (150–500 ml), con i litri. Messaggio libero, suono (notifiche del telefono, i 5 di Taime, solo vibrazione, silenzioso), "Più tardi" da 5 min a 1 ora, prova tra 10 secondi.
+  - La notifica mostra il gattino scelto con una goccia, i bicchieri e una barra; accende lo schermo (full-screen intent verso un'activity trasparente che si chiude subito, più un wake lock) senza aprire l'app. "Ho bevuto" conta il bicchiere e risponde "Fatto!", "Più tardi" rimanda.
+  - Non tocca mai il timer: un allarme nativo a parte segue il piano calcolato in Dart (una settimana avanti, rinnovato quando sta finendo), anche ad app chiusa, dopo un riavvio o un aggiornamento.
+  - Nel Focus: chip con i bicchieri di oggi; toccandolo si aprono i bicchieri, "Ho bevuto", "−" e il prossimo promemoria. Conteggi nelle preferenze (`water.AAAA-MM-GG`), quindi anche nel backup.
 
 ## Novità 2.5.2
 - Tolto l'avviso "Il timer è ancora attivo": suonava 15 minuti dopo essere usciti dall'app con il timer avviato, quindi a metà di ogni focus col telefono bloccato (prima della 2.5.1 non partiva mai). La notifica del timer è già sempre visibile e le pause hanno i loro promemoria.
